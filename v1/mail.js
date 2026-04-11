@@ -70,76 +70,81 @@ export default async function sendMailRoutes(fastify, options) {
   })
 
   // Route for payment confirmation emails
-  fastify.post("/payment-confirmation", async (request, reply) => {
-    try {
-      const {
-        email,
-        name,
-        ticket_ID,
-        event_host,
-        event_name,
-        payment_ref,
-        ticket_type,
-        booker_email,
-        ticket_price,
-        payment_method,
-      } = request.body
+// Route for payment confirmation emails
+fastify.post("/payment-confirmation", async (request, reply) => {
+  try {
+    const {
+      email,
+      name,
+      ticket_IDs,        
+      ticket_references, 
+      event_host,
+      event_name,
+      payment_ref,
+      ticket_types,      
+      booker_email,
+      total_amount,     
+      ticket_count,      
+      payment_method,
+    } = request.body
 
-      // Validate required fields
-      if (!email || !name || !ticket_ID || !event_name || !payment_ref || !payment_method) {
-        return reply.code(400).send({
-          success: false,
-          message: "Missing required fields for payment confirmation email",
-        })
-      }
-
-      const emailParams = {
-        from: {
-          email: "tickets@spotix.com.ng",
-          name: "Spotix Tickets",
-        },
-        to: [
-          {
-            email: email,
-            name: name,
-          },
-        ],
-        subject: `Your Ticket for ${event_name}`,
-        template_id: "3zxk54vv5op4jy6v",
-        personalization: [
-          {
-            email: email,
-            data: {
-              name: name,
-              ticket_ID: ticket_ID,
-              event_host: event_host || "Spotix Event Host",
-              event_name: event_name,
-              payment_ref: payment_ref,
-              ticket_type: ticket_type || "Standard",
-              booker_email: booker_email || "support@spotix.com.ng",
-              ticket_price: ticket_price || "0.00",
-              payment_method: payment_method,
-            },
-          },
-        ],
-      }
-
-      const response = await mailersend.email.send(emailParams)
-
-      fastify.log.info("Payment confirmation email sent successfully")
-      return reply.code(200).send({
-        success: true,
-        message: "Payment confirmation email sent successfully",
-      })
-    } catch (error) {
-      fastify.log.error("Error sending payment confirmation email:", error)
-      return reply.code(500).send({
+    // Validate required fields
+    if (!email || !name || !ticket_IDs || !event_name || !payment_ref || !payment_method) {
+      return reply.code(400).send({
         success: false,
-        message: "Failed to send payment confirmation email",
-        error: error.message,
+        message: "Missing required fields for payment confirmation email",
       })
     }
-  })
+
+    const emailParams = {
+      from: {
+        email: "tickets@spotix.com.ng",
+        name: "Spotix Tickets",
+      },
+      to: [
+        {
+          email: email,
+          name: name,
+        },
+      ],
+      subject: `Your Ticket for ${event_name}`,
+      template_id: "3zxk54vv5op4jy6v",
+      personalization: [
+        {
+          email: email,
+          data: {
+            name: name,
+            ticket_IDs: ticket_IDs,
+            ticket_references: ticket_references || payment_ref,
+            event_host: event_host || "Spotix Event Host",
+            event_name: event_name,
+            payment_ref: payment_ref,
+            ticket_types: ticket_types || "Standard",
+            booker_email: booker_email || "support@spotix.com.ng",
+            total_amount: total_amount || "0.00",
+            ticket_count: ticket_count || 1,
+            payment_method: payment_method,
+          },
+        },
+      ],
+    }
+
+    await mailersend.email.send(emailParams)
+
+    fastify.log.info("Payment confirmation email sent successfully")
+    return reply.code(200).send({
+      success: true,
+      message: "Payment confirmation email sent successfully",
+    })
+  } catch (error) {
+    fastify.log.error("Error sending payment confirmation email:", error)
+    return reply.code(500).send({
+      success: false,
+      message: "Failed to send payment confirmation email",
+      error: error.message,
+    })
+  }
+})
 
   // Route for welcome emails
   fastify.post("/welcome-email", async (request, reply) => {

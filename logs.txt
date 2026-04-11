@@ -1,0 +1,9 @@
+.LOG
+4:55 AM 4/11/2026
+[v9.1.0]
+
+Started documenting late. Yeah, bite me
+
+## Feature ##
+
+Added the weather forecast cron.

@@ -1,5 +1,4 @@
 /* 
-This server isn't deployed from this frontend.
 The backend is developed and maintained by Drexx Codes and the Spotix Team 
 2025 - till date
 */
@@ -21,6 +20,10 @@ import webhookRoute from "./v1/webhook.js";
 import verifyPaymentRoute from "./v1/verify-payment.js";
 import ticketRoute from "./v1/ticket.js";
 import freeTicketRoute from "./v1/ticket2.js";
+import cronPayoutRoute from "./v1/cron/payout.js";
+import { processTransferEvents } from "./v1/payout.js";
+import cronForecastRoute from "./v1/cron/forecast.js";
+
 
 // Load env
 dotenv.config();
@@ -83,6 +86,9 @@ fastify.register(webhookRoute, { prefix: "/v1" });
 fastify.register(ticketRoute, { prefix: "/v1" });
 fastify.register(verifyPaymentRoute, { prefix: "/v1" });
 fastify.register(freeTicketRoute, { prefix: "/v1" });
+fastify.register(cronPayoutRoute, { prefix: "/v1" });
+fastify.register(processTransferEvents, { prefix: "/v1" });
+fastify.register(cronForecastRoute, { prefix: "/v1" });
 
 // Serve frontend if dist exists
 const distPath = path.join(__dirname, "dist");
@@ -105,7 +111,7 @@ if (fs.existsSync(distPath)) {
 // Start server
 const start = async () => {
   try {
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 2000;
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
     console.log(`🚀 Server running on port ${PORT}`);
   } catch (err) {

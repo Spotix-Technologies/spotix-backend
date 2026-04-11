@@ -1,144 +1,112 @@
 import crypto from "crypto";
 import { adminDb } from "./firebase-admin.js";
+import { processTransferEvents } from "./payout.js";
 
-/**
- * Paystack Webhook Handler
- * Verifies Paystack signature and updates payment status in Firestore
- */
+const TRANSFER_EVENTS = new Set([
+  "transfer.success",
+  "transfer.failed",
+  "transfer.reversed",
+]);
+
 export default async function webhookRoute(fastify, options) {
-
   fastify.post("/webhook", async (request, reply) => {
     try {
-      // Get Paystack secret key from environment
       const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
-
       if (!paystackSecret) {
         fastify.log.error("PAYSTACK_SECRET_KEY not configured");
         return reply.code(500).send({ error: "Server configuration error" });
       }
 
-      // Verify Paystack signature
+      // ── Signature verification ─────────────────────────────────────────────
       const hash = crypto
         .createHmac("sha512", paystackSecret)
         .update(JSON.stringify(request.body))
         .digest("hex");
 
-      const paystackSignature = request.headers["x-paystack-signature"];
-
-      if (hash !== paystackSignature) {
-        fastify.log.warn("Invalid Paystack signature");
+      if (hash !== request.headers["x-paystack-signature"]) {
+        fastify.log.warn("[webhook] Invalid Paystack signature");
         return reply.code(401).send({ error: "Invalid signature" });
       }
 
-      // Extract event data
       const { event, data } = request.body;
+      fastify.log.info(`[webhook] Received event: ${event}`);
 
-      fastify.log.info(`Received Paystack event: ${event}`);
-
-      // Handle charge events (payment success or failure)
+      // ── Ticket purchase ────────────────────────────────────────────────────
       if (event === "charge.success" || event === "charge.failed") {
         const reference = data?.reference;
-
         if (!reference) {
-          fastify.log.error("No reference found in webhook data");
           return reply.code(400).send({ error: "Missing reference" });
         }
 
-        // Check transaction type from metadata
         const transactionType = data?.metadata?.custom_fields?.find(
-          field => field.variable_name === "type"
+          (f) => f.variable_name === "type"
         )?.value;
 
-        fastify.log.info(`Transaction type: ${transactionType || "not specified"}`);
-
-        // Only process if transaction type is ticket_purchase
         if (transactionType !== "ticket_purchase") {
-          fastify.log.info(`Skipping non-ticket transaction: ${transactionType}`);
-          return reply.code(200).send({
-            success: true,
-            message: "Transaction received but not a ticket purchase",
-            transactionType,
-            reference,
-          });
+          fastify.log.info(`[webhook] Skipping non-ticket charge: ${transactionType}`);
+          return reply.code(200).send({ success: true, message: "Not a ticket purchase" });
         }
 
-        // Determine payment status
         const paymentStatus = event === "charge.success" ? "successful" : "failed";
 
-        fastify.log.info(`Processing ticket purchase ${reference} with status: ${paymentStatus}`);
-
         try {
-          // Access Firestore Reference collection
           const referenceRef = adminDb.collection("Reference").doc(reference);
           const referenceDoc = await referenceRef.get();
 
           if (!referenceDoc.exists) {
-            fastify.log.warn(`Reference ${reference} not found in Firestore`);
-            return reply.code(404).send({ 
-              error: "Reference not found",
-              reference 
-            });
+            fastify.log.warn(`[webhook] Reference not found: ${reference}`);
+            return reply.code(404).send({ error: "Reference not found", reference });
           }
 
-          // Update the status field
           await referenceRef.update({
             status: paymentStatus,
             updatedAt: new Date().toISOString(),
             paystackEvent: event,
             transactionType: "ticket_purchase",
-            amount: data?.amount || null,
-            currency: data?.currency || null,
+            amount: data?.amount ?? null,
+            currency: data?.currency ?? null,
             customer: {
-              email: data?.customer?.email || null,
-              customerCode: data?.customer?.customer_code || null,
+              email: data?.customer?.email ?? null,
+              customerCode: data?.customer?.customer_code ?? null,
             },
           });
 
-          fastify.log.info(`Successfully updated ticket purchase reference ${reference} to ${paymentStatus}`);
-
-          return reply.code(200).send({
-            success: true,
-            message: "Ticket purchase payment status updated",
-            reference,
-            status: paymentStatus,
-            transactionType: "ticket_purchase",
-          });
-        } catch (firestoreError) {
-          fastify.log.error("Firestore error:", firestoreError);
-          return reply.code(500).send({ 
-            error: "Database update failed",
-            details: firestoreError.message 
-          });
+          fastify.log.info(`[webhook] Ticket purchase ${reference} → ${paymentStatus}`);
+          return reply.code(200).send({ success: true, reference, status: paymentStatus });
+        } catch (err) {
+          fastify.log.error("[webhook] Firestore error on ticket purchase:", err);
+          return reply.code(500).send({ error: "Database update failed" });
         }
-      } else {
-        // Handle other Paystack events (optional)
-        fastify.log.info(`Unhandled event type: ${event}`);
-        return reply.code(200).send({ 
-          success: true, 
-          message: "Event received but not processed",
-          event 
-        });
       }
+
+      // ── Transfer events (payout cycle) ────────────────────────────────────
+      if (TRANSFER_EVENTS.has(event)) {
+        try {
+          await processTransferEvents(fastify, [{ event, data }]);
+          return reply.code(200).send({ success: true, event });
+        } catch (err) {
+          fastify.log.error("[webhook] processTransferEvents error:", err);
+          // Still return 200 — Paystack must not retry due to our internal error
+          return reply.code(200).send({ success: false, error: "Internal processing error" });
+        }
+      }
+
+      // ── Unhandled events ───────────────────────────────────────────────────
+      fastify.log.info(`[webhook] Unhandled event: ${event}`);
+      return reply.code(200).send({ success: true, message: "Event received but not processed" });
+
     } catch (error) {
-      fastify.log.error("Webhook processing error:", error);
-      return reply.code(500).send({ 
-        error: "Internal server error",
-        details: error.message 
-      });
+      fastify.log.error("[webhook] Unhandled error:", error);
+      return reply.code(500).send({ error: "Internal server error" });
     }
   });
 
-
-  /**
-   * GET /webhook/health
-   * Health check endpoint for the webhook
-   */
   fastify.get("/webhook/health", async (request, reply) => {
-    return reply.code(200).send({ 
+    return reply.code(200).send({
       status: "active",
       service: "Paystack Webhook Handler",
       developer: "Developed by Spotix Technologies",
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   });
 }
