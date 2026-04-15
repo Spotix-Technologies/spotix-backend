@@ -310,7 +310,7 @@ export default async function ticketRoute(fastify, options) {
             transaction.set(adminSalesRef, {
               eventName: paymentData.eventName,
               ticketCount: totalTicketCount,
-              ticketSales: paymentData.totalAmount || paymentData.ticketPrice,
+              ticketSales: paymentData.ticketPrice,
               lastPurchaseTime: purchaseTime,
               createdAt: nowIso,
               updatedAt: nowIso,
@@ -318,7 +318,7 @@ export default async function ticketRoute(fastify, options) {
           } else {
             transaction.update(adminSalesRef, {
               ticketCount: FieldValue.increment(totalTicketCount),
-              ticketSales: FieldValue.increment(paymentData.totalAmount || paymentData.ticketPrice),
+              ticketSales: FieldValue.increment(paymentData.ticketPrice),
               lastPurchaseTime: purchaseTime,
               updatedAt: nowIso,
             });
@@ -392,7 +392,7 @@ export default async function ticketRoute(fastify, options) {
           payment_ref: reference,
           ticket_types: ticketTypeSummary,
           booker_email: paymentData.bookerEmail || "support@spotix.com.ng",
-          total_amount: (paymentData.totalAmount || paymentData.ticketPrice || 0).toFixed(2),
+          total_amount: (paymentData.totalAmount).toFixed(2),
           ticket_count: totalTicketCount,
           payment_method: "Paystack",
         };

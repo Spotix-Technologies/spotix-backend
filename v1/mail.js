@@ -88,13 +88,33 @@ fastify.post("/payment-confirmation", async (request, reply) => {
       payment_method,
     } = request.body
 
-    // Validate required fields
-    if (!email || !name || !ticket_IDs || !event_name || !payment_ref || !payment_method) {
-      return reply.code(400).send({
-        success: false,
-        message: "Missing required fields for payment confirmation email",
-      })
-    }
+// Validate required fields
+const requiredFields = {
+      email,
+      name,
+      ticket_IDs,        
+      ticket_references, 
+      event_host,
+      event_name,
+      payment_ref,
+      ticket_types,      
+      booker_email,
+      total_amount,     
+      ticket_count,      
+      payment_method,
+};
+
+const missingFields = Object.entries(requiredFields)
+  .filter(([_, value]) => !value)
+  .map(([key]) => key);
+
+if (missingFields.length > 0) {
+  fastify.log.warn(`[payment-confirmation] Missing required fields: ${missingFields.join(", ")}`);
+  return reply.code(400).send({
+    success: false,
+    message: "Missing required fields for payment confirmation email",
+  });
+}
 
     const emailParams = {
       from: {
