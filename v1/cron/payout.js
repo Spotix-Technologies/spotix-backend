@@ -172,7 +172,7 @@ export default async function cronPayoutRoute(fastify, options) {
         amount: payout.amount * 100, // kobo
         recipient: recipientCode,
         reference: transferReference,
-        reason: `Spotix payout for event ${payout.eventId} on ${payout.date}`,
+        reason: `Spotix payout for event ${payout.eventName} on ${payout.date}`,
       };
 
       fastify.log.info(
