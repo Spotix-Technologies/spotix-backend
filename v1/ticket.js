@@ -395,8 +395,6 @@ export default async function ticketRoute(fastify, options) {
           payment_method: "Paystack",
         };
 
-        fastify.log.info("[step:11] Sending email with payload: %j", emailPayload);
-
         const emailResponse = await fetch(`${BACKEND_URL}/v1/mail/payment-confirmation`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

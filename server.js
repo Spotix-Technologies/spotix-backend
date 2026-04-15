@@ -39,10 +39,12 @@ const fastify = Fastify({ logger: true });
 
 const allowedOrigins = new Set([
   "https://spotix.com.ng",
+  "https://api.spotix.com.ng",
   "https://www.spotix.com.ng",
   "https://booker.spotix.com.ng",
   "https://www.booker.spotix.com.ng",
   "https://spotix-backend.onrender.com",
+  
 ]);
 
 await fastify.register(fastifyCors, {
