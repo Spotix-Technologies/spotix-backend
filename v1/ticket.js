@@ -374,14 +374,12 @@ export default async function ticketRoute(fastify, options) {
         fastify.log.error("[step:10] Analytics error (non-blocking):", analyticsError);
       }
 
-      // ─── Step 11: Confirmation email ──────────────────────────────────────────
+// ─── Step 11: Confirmation email ──────────────────────────────────────────
       try {
         const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:2000";
-
         const ticketTypeSummary = ticketTypesArray
           .map((item) => `${item.type}${Number(item.quantity) > 1 ? ` x${item.quantity}` : ""}`)
           .join(", ");
-
         const emailPayload = {
           email: buyerEmail,
           name: buyerFullName || "Valued Customer",
@@ -397,6 +395,8 @@ export default async function ticketRoute(fastify, options) {
           payment_method: "Paystack",
         };
 
+        fastify.log.info("[step:11] Sending email with payload: %j", emailPayload);
+
         const emailResponse = await fetch(`${BACKEND_URL}/v1/mail/payment-confirmation`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -406,12 +406,12 @@ export default async function ticketRoute(fastify, options) {
         if (emailResponse.ok) {
           fastify.log.info("[step:11] Confirmation email sent");
         } else {
-          fastify.log.warn(`[step:11] Email failed — status: ${emailResponse.status}`);
+          const responseBody = await emailResponse.text();
+          fastify.log.warn(`[step:11] Email failed — status: ${emailResponse.status} | body: ${responseBody}`);
         }
       } catch (error) {
-        fastify.log.error("[step:11] Email error (non-blocking):", error);
+        fastify.log.error(`[step:11] Email error (non-blocking): ${error.message}`, { stack: error.stack });
       }
-
       // ─── Step 12: Success response ────────────────────────────────────────────
       return reply.code(200).send({
         success: true,
