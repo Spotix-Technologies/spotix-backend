@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { adminDb } from "./firebase-admin.js";
 import { processTransferEvents } from "./payout.js";
+import { generateTickets } from "./ticket.js";
 
 const TRANSFER_EVENTS = new Set([
   "transfer.success",
@@ -58,6 +59,7 @@ export default async function webhookRoute(fastify, options) {
             return reply.code(404).send({ error: "Reference not found", reference });
           }
 
+          // ── Update payment status ──────────────────────────────────────────
           await referenceRef.update({
             status: paymentStatus,
             updatedAt: new Date().toISOString(),
@@ -72,6 +74,28 @@ export default async function webhookRoute(fastify, options) {
           });
 
           fastify.log.info(`[webhook] Ticket purchase ${reference} → ${paymentStatus}`);
+
+          // ── Generate tickets on successful charge ──────────────────────────
+          if (event === "charge.success") {
+            try {
+              const result = await generateTickets(fastify, reference);
+              if (result.alreadyGenerated) {
+                fastify.log.info(`[webhook] Tickets for ${reference} were already generated — skipped`);
+              } else {
+                fastify.log.info(
+                  `[webhook] Generated ${result.totalTickets} ticket(s) for ${reference}: ${result.ticketIds.join(", ")}`
+                );
+              }
+            } catch (ticketErr) {
+              // Non-fatal: status is already marked successful; ticket generation
+              // can be retried via the /v1/ticket route if needed.
+              fastify.log.error(
+                `[webhook] Ticket generation failed for ${reference} (non-blocking):`,
+                ticketErr
+              );
+            }
+          }
+
           return reply.code(200).send({ success: true, reference, status: paymentStatus });
         } catch (err) {
           fastify.log.error("[webhook] Firestore error on ticket purchase:", err);
