@@ -49,3 +49,6 @@ main.jsx
 
 src/**/*.jsx
 src/**/*.js
+
+# scripts
+scripts
