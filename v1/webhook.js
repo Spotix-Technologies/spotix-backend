@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { adminDb } from "./firebase-admin.js";
 import { processTransferEvents } from "./payout.js";
 import { generateTickets } from "./ticket.js";
+import { generateAgentTickets } from "./ticket-agent.js";
 import { processVotingCharge } from "./voting.js";          
 
 const TRANSFER_EVENTS = new Set([
@@ -86,7 +87,17 @@ export default async function webhookRoute(fastify, options) {
 
             if (event === "charge.success") {
               try {
-                const result = await generateTickets(fastify, reference);
+                const refData = referenceDoc.data();
+                // Pregenerated-pass agent sales must reuse the exact pass
+                // ID(s) the agent scanned as the ticketId — that's what's
+                // physically printed on the paper the buyer is holding.
+                // Everything else (self-service, unrestricted-mode agent
+                // sales with no physical pass) goes through the normal
+                // generator, which mints a fresh SPTX-TX- id.
+                const useAgentGenerator = refData?.isAgentSale && refData?.passMode === "pregenerated";
+                const result = useAgentGenerator
+                  ? await generateAgentTickets(fastify, reference)
+                  : await generateTickets(fastify, reference);
                 if (result.alreadyGenerated) {
                   fastify.log.info(`[webhook] Tickets for ${reference} already generated — skipped`);
                 } else {

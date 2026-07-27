@@ -19,10 +19,12 @@ import notifyRoutes from "./v1/notify.js";
 import webhookRoute from "./v1/webhook.js";
 import verifyPaymentRoute from "./v1/verify-payment.js";
 import ticketRoute from "./v1/ticket.js";
+import generateAgentTickets from "./v1/ticket-agent.js";
 import freeTicketRoute from "./v1/ticket2.js";
 import cronPayoutRoute from "./v1/cron/payout.js";
 import { processTransferEvents } from "./v1/payout.js";
 import cronForecastRoute from "./v1/cron/forecast.js";
+import dicebearRoute  from "./v1/dicebear.js";
 
 
 // Load env
@@ -44,6 +46,7 @@ const allowedOrigins = new Set([
   "https://booker.spotix.com.ng",
   "https://www.booker.spotix.com.ng",
   "https://spotix-backend.onrender.com",
+  "https://console.spotix.com.ng",
   
 ]);
 
@@ -88,11 +91,13 @@ fastify.register(sendMailRoutes, { prefix: "/v1/mail" });
 fastify.register(notifyRoutes, { prefix: "/v1/notify" });
 fastify.register(webhookRoute, { prefix: "/v1" });
 fastify.register(ticketRoute, { prefix: "/v1" });
+fastify.register(generateAgentTickets, { prefix: "/v1" });
 fastify.register(verifyPaymentRoute, { prefix: "/v1" });
 fastify.register(freeTicketRoute, { prefix: "/v1" });
 fastify.register(cronPayoutRoute, { prefix: "/v1" });
 fastify.register(processTransferEvents, { prefix: "/v1" });
 fastify.register(cronForecastRoute, { prefix: "/v1" });
+fastify.register(dicebearRoute, { prefix: "/v1" });
 
 // Serve frontend if dist exists
 const distPath = path.join(__dirname, "dist");
