@@ -45,6 +45,7 @@
 
 import { adminDb } from "./firebase-admin.js"
 import { FieldValue } from "firebase-admin/firestore"
+import { invalidatePollCache } from "./redis.js"
 
 // ── Royalty / service fee helpers (mirrors booker/app/lib/poll-config.ts) ───────
 
@@ -310,6 +311,19 @@ export async function processVotingCharge(fastify, event, data, reference) {
         fastify.log.info(
           `[voting] [single] Allocated ${numVotes} vote(s) to ${contestantId} on poll ${targetPollId}`
         )
+      }
+
+      // spotix-user's public voting-poll page caches this poll for up to
+      // 15s (see voting-poll-lookup:* in voting-utils.ts) precisely
+      // because there was no invalidation hook into this webhook — this
+      // closes that gap, so a vote shows up on the page immediately
+      // instead of waiting out the TTL. Never allowed to fail the
+      // webhook: a stale page for up to 15s is fine, a failed payment
+      // credit is not.
+      try {
+        await invalidatePollCache(targetPollId)
+      } catch (err) {
+        fastify.log.warn(`[voting] Cache invalidation failed for poll ${targetPollId} (non-blocking):`, err)
       }
 
       // ── 4a. Scalable per-vote records ────────────────────────────────────
