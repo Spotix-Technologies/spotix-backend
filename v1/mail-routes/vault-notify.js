@@ -2,7 +2,7 @@ import { mailjet } from "./_mailjet-client.js"
 
 // TODO(Drexx): drop in the real Mailjet Template ID for the Vault
 // notification once it's published — left blank on purpose.
-const VAULT_NOTIFY_TEMPLATE_ID = 8254343
+const VAULT_NOTIFY_TEMPLATE_ID = 8254523
 
 /**
  * Route: Vault payout notification
