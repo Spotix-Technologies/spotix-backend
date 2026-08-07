@@ -52,3 +52,6 @@ src/**/*.js
 
 # scripts
 scripts
+
+# Templates
+v1/emails
