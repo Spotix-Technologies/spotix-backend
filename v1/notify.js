@@ -14,14 +14,18 @@
  *
  * Endpoints (all POST):
  *   /v1/notify/team-member-added
+ *   /v1/notify/team-member-changed  ← new: role/permissions change notification
+ *   /v1/notify/event-transfer-request  ← new: event ownership transfer offer
  *   /v1/notify/agent-onboard
  *   /v1/notify/agent-ticket
  *   /v1/notify/agent-sale
  *   /v1/notify/refund-request
- *   /v1/notify/vault-notify   ← new: Vault payout sign-off notification
+ *   /v1/notify/vault-notify
  */
 
 import teamMemberAddedRoute from "./mail-routes/team-member-added.js"
+import teamMemberChangedRoute from "./mail-routes/team-member-changed.js"
+import eventTransferRequestRoute from "./mail-routes/event-transfer-request.js"
 import agentOnboardRoute from "./mail-routes/agent-onboard.js"
 import agentTicketRoute from "./mail-routes/agent-ticket.js"
 import agentSaleRoute from "./mail-routes/agent-sale.js"
@@ -30,6 +34,8 @@ import vaultNotifyRoute from "./mail-routes/vault-notify.js"
 
 export default async function notifyRoutes(fastify, options) {
   await fastify.register(teamMemberAddedRoute)
+  await fastify.register(teamMemberChangedRoute)
+  await fastify.register(eventTransferRequestRoute)
   await fastify.register(agentOnboardRoute)
   await fastify.register(agentTicketRoute)
   await fastify.register(agentSaleRoute)
