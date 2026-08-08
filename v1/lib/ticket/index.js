@@ -23,6 +23,7 @@
 // over an email, analytics, or referral hiccup.
 
 import { adminDb } from "../../firebase-admin.js";
+import { isValidTicketReference } from "../reference-format.js";
 
 import { verifyPaymentStatus } from "./verify-payment-status.js";
 import { claimGenerationLock, buildAlreadyGeneratedResult } from "./claim-lock.js";
@@ -39,8 +40,8 @@ import { sendConfirmationEmail } from "./confirmation-email.js";
 
 // ─── Exported core logic (called by webhook after charge.success) ─────────────
 export async function generateTickets(fastify, reference) {
-  if (!reference.startsWith("SPTX-REF-")) {
-    throw Object.assign(new Error("Invalid reference format. Expected format: SPTX-REF-{timestamp}"), {
+  if (!isValidTicketReference(reference)) {
+    throw Object.assign(new Error("Invalid reference format. Expected format: SPTX-REF-{timestamp}-{2 letters}"), {
       statusCode: 400,
     });
   }

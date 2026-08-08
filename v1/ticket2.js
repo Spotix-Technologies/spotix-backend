@@ -1,5 +1,6 @@
 import { adminDb } from "./firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
+import { isValidTicketReference } from "./lib/reference-format.js";
 
 /**
  * Free Ticket Generation Route
@@ -25,10 +26,10 @@ export default async function freeTicketRoute(fastify, options) {
       }
 
       // Verify reference format for free tickets
-      if (!reference.startsWith("SPTX-REF-")) {
+      if (!isValidTicketReference(reference)) {
         return reply.code(400).send({
           error: "Bad Request",
-          message: "Invalid reference format. Expected format: SPTX-REF-{timestamp}",
+          message: "Invalid reference format. Expected format: SPTX-REF-{timestamp}-{2 letters}",
           developer: "API developed and maintained by Spotix Technologies",
         });
       }

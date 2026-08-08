@@ -52,7 +52,14 @@
 import { adminDb } from "../../firebase-admin.js";
 import { invalidatePollCache } from "../../redis.js";
 
-import { loadReference, isAlreadyProcessed, markReferenceStatus } from "./reference.js";
+import {
+  loadReference,
+  isAlreadyProcessed,
+  markReferenceStatus,
+  claimVoteCreditLock,
+  finalizeVoteCredit,
+  releaseVoteCreditLock,
+} from "./reference.js";
 import { computeVoteFee } from "./fees.js";
 import { tickPollTieBreakers, recordTieBreakerVote } from "./tie-breaker-vote.js";
 import { allocateVote } from "./allocate-vote.js";
@@ -76,16 +83,38 @@ export async function processVotingCharge(fastify, event, data, reference) {
   const { referenceRef, refData } = loaded;
 
   if (isAlreadyProcessed(refData)) {
-    fastify.log.info(`[voting] ${reference} already "${refData.status}" — skipped`);
+    fastify.log.info(`[voting] ${reference} vote already credited — skipped`);
     return { status: "already_processed", reference };
   }
 
   // ── Step 3: stamp payment outcome onto the reference ─────────────────────────
+  // Safe to run every time regardless of credit state — this never
+  // touches voteCredited, so it can't itself cause a double-credit. This
+  // is also what lets a reference that was previously "pending" (or even
+  // briefly "failed") move to "successful" once something — a redelivered
+  // webhook, or manual reconciliation — confirms it really went through.
   await markReferenceStatus(fastify, referenceRef, reference, event, data, paymentStatus);
 
   if (paymentStatus === "failed") {
     return { status: "failed", reference };
   }
+
+  // ── Atomic claim: only ONE concurrent caller may credit this vote ───────────
+  // (webhook redelivery + manual reconciliation racing each other, etc.)
+  const claim = await claimVoteCreditLock(adminDb, referenceRef);
+
+  if (claim.claimResult === "already_credited") {
+    fastify.log.info(`[voting] ${reference} vote already credited — skipped`);
+    return { status: "already_processed", reference };
+  }
+  if (claim.claimResult === "locked") {
+    fastify.log.warn(`[voting] ${reference} vote credit already in progress elsewhere — skipping duplicate`);
+    return { status: "processing", reference };
+  }
+
+  // claim.claimResult === "claimed" — we hold the lock now, and MUST always
+  // resolve it below (finalize on success, release-without-credit on error)
+  // so a genuine failure doesn't permanently block a future retry.
 
   // ── Step 4: allocate votes ────────────────────────────────────────────────────
   const {
@@ -96,12 +125,15 @@ export async function processVotingCharge(fastify, event, data, reference) {
     voteCount,
     totalAmount,
     pollPrice,
-  } = refData;
+  } = claim.refData ?? refData;
 
   const targetPollId = pollId ?? voteId ?? null;
 
   if (!targetPollId || !contestantId) {
     fastify.log.warn(`[voting] Missing pollId/contestantId on reference ${reference} — skipping allocation`);
+    // Nothing ever will differ on retry for malformed reference data —
+    // finalize now rather than leaving the lock claimed forever.
+    await finalizeVoteCredit(fastify, referenceRef, reference);
     return { status: "successful_no_allocation", reference };
   }
 
@@ -189,9 +221,15 @@ export async function processVotingCharge(fastify, event, data, reference) {
       // ── Step 4c: creator stats 
       await updateCreatorStats(fastify, adminDb, { creatorId, netAmount, numVotes, targetPollId, reference });
     }
+    // Everything above committed without throwing — safe to lock the
+    // credit in now so no later redelivery/reconciliation can double it.
+    await finalizeVoteCredit(fastify, referenceRef, reference);
   } catch (err) {
-    // Non-fatal — payment recorded; vote can be re-processed
-    fastify.log.error(`[voting] Vote allocation failed for ${reference} (non-blocking):`, err);
+    // Payment is recorded, but crediting didn't fully complete — release
+    // the lock (without marking credited) so this reference can be
+    // safely retried by the next webhook redelivery or reconciliation.
+    fastify.log.error(`[voting] Vote allocation failed for ${reference} (will retry on next attempt):`, err);
+    await releaseVoteCreditLock(fastify, referenceRef, reference);
   }
 
   // ── Step 5: admin analytics 

@@ -23,10 +23,11 @@
 import { adminDb } from "./firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { processAgentSale, generateTicketId } from "./ticket.js";
+import { isValidTicketReference } from "./lib/reference-format.js";
 
 export async function generateAgentTickets(fastify, reference) {
-  if (!reference.startsWith("SPTX-REF-")) {
-    throw Object.assign(new Error("Invalid reference format. Expected format: SPTX-REF-{timestamp}"), {
+  if (!isValidTicketReference(reference)) {
+    throw Object.assign(new Error("Invalid reference format. Expected format: SPTX-REF-{timestamp}-{2 letters}"), {
       statusCode: 400,
     });
   }
