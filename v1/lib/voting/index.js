@@ -67,6 +67,7 @@ import { writeVoteEntries } from "./entries.js";
 import { updateDailyVotes } from "./daily-aggregation.js";
 import { updateCreatorStats } from "./creator-stats.js";
 import { reportVotingAnalytics } from "./analytics.js";
+import { sendVoteConfirmationEmail } from "./vote-confirmation-email.js";
 
 /**
  * @param {import('fastify').FastifyInstance} fastify
@@ -146,6 +147,7 @@ export async function processVotingCharge(fastify, event, data, reference) {
   let serviceFee       = 0;
   let netAmount        = Number(totalAmount ?? 0);
   let creatorId        = null;
+  let creditSucceeded  = false;
 
   try {
     const pollSnap = await pollRef.get();
@@ -224,12 +226,20 @@ export async function processVotingCharge(fastify, event, data, reference) {
     // Everything above committed without throwing — safe to lock the
     // credit in now so no later redelivery/reconciliation can double it.
     await finalizeVoteCredit(fastify, referenceRef, reference);
+    creditSucceeded = true;
   } catch (err) {
     // Payment is recorded, but crediting didn't fully complete — release
     // the lock (without marking credited) so this reference can be
     // safely retried by the next webhook redelivery or reconciliation.
     fastify.log.error(`[voting] Vote allocation failed for ${reference} (will retry on next attempt):`, err);
     await releaseVoteCreditLock(fastify, referenceRef, reference);
+  }
+
+  // ── Step 6: buyer confirmation email ──────────────────────────────────────────
+  // Only ever sent once the vote is actually credited — never on the error
+  // path above, so a buyer never gets a receipt for a vote that didn't land.
+  if (creditSucceeded) {
+    await sendVoteConfirmationEmail(fastify, { refData: claim.refData ?? refData, reference });
   }
 
   // ── Step 5: admin analytics 

@@ -22,6 +22,7 @@
  *   /v1/notify/agent-sale
  *   /v1/notify/refund-request
  *   /v1/notify/vault-notify
+ *   /v1/notify/vote-purchase-confirmation  ← new: vote purchase receipt email
  */
 
 import teamMemberAddedRoute from "./mail-routes/team-member-added.js"
@@ -33,6 +34,7 @@ import agentTicketRoute from "./mail-routes/agent-ticket.js"
 import agentSaleRoute from "./mail-routes/agent-sale.js"
 import refundRequestRoute from "./mail-routes/refund-request.js"
 import vaultNotifyRoute from "./mail-routes/vault-notify.js"
+import votePurchaseConfirmationRoute from "./mail-routes/vote-purchase-confirmation.js"
 
 export default async function notifyRoutes(fastify, options) {
   await fastify.register(teamMemberAddedRoute)
@@ -44,4 +46,5 @@ export default async function notifyRoutes(fastify, options) {
   await fastify.register(agentSaleRoute)
   await fastify.register(refundRequestRoute)
   await fastify.register(vaultNotifyRoute)
+  await fastify.register(votePurchaseConfirmationRoute)
 }
