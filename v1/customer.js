@@ -17,17 +17,19 @@
 // Paystack's actual /customer API with the secret key — is what actually
 // attaches the name/phone to that email's Customer record.
 //
-// Why we DON'T update an existing customer: Paystack's POST /customer
-// doesn't merge/overwrite an existing record — a second POST for an
-// already-registered email just fails ("customer already exists"). The
-// only way to change an existing customer's name is a separate
-// PUT /customer/{customer_code} call. We deliberately don't do that here:
-// the same email can legitimately be used by different people across
-// purchases (a shared family email, someone buying on a friend's behalf,
-// etc.), and silently overwriting whoever registered that email first
-// would be surprising and could misattribute a Paystack-side record to
-// the wrong person. So: create once, on first use, and leave it alone
-// after that.
+// Why we only PATCH missing fields on an existing customer, never
+// overwrite populated ones: Paystack's POST /customer doesn't merge with
+// an existing record — a second POST for an already-registered email
+// just fails ("customer already exists"). Changing an existing
+// customer's details requires a separate PUT /customer/{customer_code}
+// call. We deliberately restrict that PUT to fields that are currently
+// blank on the Paystack record: the same email can legitimately be used
+// by different people across purchases (a shared family email, someone
+// buying on a friend's behalf, etc.), and overwriting a field that's
+// already populated would be surprising and could misattribute a
+// Paystack-side record to the wrong person. Filling in a gap (e.g. a
+// name was never captured on first use, phone is missing) carries none
+// of that risk, so it's safe to backfill.
 //
 // Fire-and-forget from the frontend's perspective: a failure here should
 // never block a payment from proceeding — metadata.custom_fields already
@@ -45,6 +47,38 @@ async function findExistingCustomer(email, secretKey) {
 
   const data = await response.json();
   if (!response.ok || data?.status !== true || !data?.data) return null;
+
+  return data.data;
+}
+
+// Builds a payload containing ONLY the fields that are missing on the
+// existing Paystack customer but were supplied on this request. Never
+// includes a field that's already populated on `existing` — that's what
+// keeps this a backfill instead of an overwrite.
+function buildMissingFieldsPatch(existing, { firstName, lastName, phone }) {
+  const patch = {};
+
+  if (firstName && !existing.first_name) patch.first_name = firstName;
+  if (lastName && !existing.last_name) patch.last_name = lastName;
+  if (phone && !existing.phone) patch.phone = phone;
+
+  return patch;
+}
+
+async function patchCustomer(customerCode, patch, secretKey) {
+  const response = await fetch(`https://api.paystack.co/customer/${encodeURIComponent(customerCode)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+
+  const data = await response.json();
+  if (!response.ok || data?.status !== true) {
+    throw new Error(data?.message || `Paystack PUT /customer/${customerCode} failed`);
+  }
 
   return data.data;
 }
@@ -82,12 +116,39 @@ export default async function customerRoute(fastify, options) {
       }
 
       if (existing) {
-        // fastify.log.info(`[customer] ${email} already has a Paystack customer (${existing.customer_code}) — leaving it as-is`);
-        return reply.code(200).send({
-          success: true,
-          skipped: true,
-          customerCode: existing.customer_code ?? null,
-        });
+        const patch = buildMissingFieldsPatch(existing, { firstName, lastName, phone });
+
+        if (Object.keys(patch).length === 0) {
+          // Nothing missing to backfill — leave the record as-is.
+          return reply.code(200).send({
+            success: true,
+            skipped: true,
+            patched: false,
+            customerCode: existing.customer_code ?? null,
+          });
+        }
+
+        try {
+          const updated = await patchCustomer(existing.customer_code, patch, paystackSecretKey);
+          // fastify.log.info(`[customer] Backfilled ${Object.keys(patch).join(", ")} for ${email} (${existing.customer_code})`);
+          return reply.code(200).send({
+            success: true,
+            skipped: false,
+            patched: true,
+            customerCode: updated?.customer_code ?? existing.customer_code ?? null,
+          });
+        } catch (err) {
+          // Non-blocking by design — the existing record is still valid,
+          // it just didn't get the backfill this time around.
+          fastify.log.warn(`[customer] Backfill patch failed for ${email} (${existing.customer_code}):`, err);
+          return reply.code(200).send({
+            success: true,
+            skipped: true,
+            patched: false,
+            customerCode: existing.customer_code ?? null,
+            message: "Customer exists but backfill patch failed",
+          });
+        }
       }
 
       const payload = { email };
