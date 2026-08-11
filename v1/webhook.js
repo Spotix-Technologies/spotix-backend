@@ -70,7 +70,7 @@ export default async function webhookRoute(fastify, options) {
               return reply.code(404).send({ error: "Reference not found", reference });
             }
 
-            await referenceRef.update({
+            const referenceUpdate = {
               status: paymentStatus,
               updatedAt: new Date().toISOString(),
               paystackEvent: event,
@@ -81,7 +81,22 @@ export default async function webhookRoute(fastify, options) {
                 email: data?.customer?.email ?? null,
                 customerCode: data?.customer?.customer_code ?? null,
               },
-            });
+            };
+
+            // Mirror the voting pipeline's markReferenceStatus: capture
+            // Paystack's actual gateway response text (e.g. "Incorrect
+            // amount sent" for a dedicated-virtual-account under/overpay)
+            // on failure, so downstream consumers (verify-payment-status,
+            // the frontend's incorrect_payment detection) have something
+            // real to work with instead of just "failed".
+            if (paymentStatus === "successful") {
+              referenceUpdate.paymentCompletedAt = new Date().toISOString();
+            } else {
+              referenceUpdate.failureReason = data?.gateway_response ?? "Payment failed";
+              referenceUpdate.paymentFailedAt = new Date().toISOString();
+            }
+
+            await referenceRef.update(referenceUpdate);
 
             fastify.log.info(`[webhook] Ticket purchase ${reference} → ${paymentStatus}`);
 

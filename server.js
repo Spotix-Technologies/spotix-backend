@@ -25,6 +25,7 @@ import cronPayoutRoute from "./v1/cron/payout.js";
 import { processTransferEvents } from "./v1/payout.js";
 import cronForecastRoute from "./v1/cron/forecast.js";
 import dicebearRoute  from "./v1/dicebear.js";
+import customerRoute from "./v1/customer.js";
 
 
 // Load env
@@ -98,7 +99,7 @@ fastify.register(cronPayoutRoute, { prefix: "/v1" });
 fastify.register(processTransferEvents, { prefix: "/v1" });
 fastify.register(cronForecastRoute, { prefix: "/v1" });
 fastify.register(dicebearRoute, { prefix: "/v1" });
-
+fastify.register(customerRoute, { prefix: "/v1" });
 // Serve frontend if dist exists
 const distPath = path.join(__dirname, "dist");
 

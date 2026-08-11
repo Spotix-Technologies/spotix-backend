@@ -27,8 +27,16 @@ export async function verifyPaymentStatus(fastify, referenceDocRef) {
     if (paymentData.status === "successful") {
       return paymentData;
     } else if (paymentData.status === "failed") {
+      // Prefer Paystack's actual gateway response text (captured on the
+      // Reference doc as failureReason by webhook.js / verify-payment.js)
+      // over a generic message — the frontend matches specific phrases
+      // like "Incorrect amount sent" against this to show a more useful
+      // state than a blanket failure.
       throw Object.assign(
-        new Error("Payment verification failed. Please try again or contact support."),
+        new Error(
+          paymentData.failureReason ||
+            "Payment verification failed. Please try again or contact support."
+        ),
         { statusCode: 400 }
       );
     } else if (paymentData.status === "pending") {
