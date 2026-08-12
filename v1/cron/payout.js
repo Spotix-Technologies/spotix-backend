@@ -1,5 +1,6 @@
 import { adminDb } from "../firebase-admin.js";
 import { FieldValue } from "firebase-admin/firestore";
+import { notifyPayoutStatus } from "../lib/notify-payout.js";
 
 export default async function cronPayoutRoute(fastify, options) {
   fastify.get("/cron/process-payouts", async (request, reply) => {
@@ -250,6 +251,17 @@ export default async function cronPayoutRoute(fastify, options) {
     } catch (err) {
       fastify.log.error({ err }, "[payout job] Firestore batch update error");
       return reply.code(500).send({ error: "Failed to update payout statuses" });
+    }
+
+    // ── Telegram notifications — fire-and-forget, never awaited ──────────────
+    for (let i = 0; i < transferResults.length; i++) {
+      const payout = batch[i];
+      notifyPayoutStatus(fastify, {
+        userId: payout.userId,
+        status: "processing",
+        eventId: payout.eventId,
+        date: payout.date,
+      });
     }
 
     fastify.log.info(`[payout job] Done — ${transferResults.length} payout(s) queued`);

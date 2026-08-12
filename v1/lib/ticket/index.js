@@ -17,10 +17,12 @@
 //   9b. survey-delivery.js        — deliver event-survey answers (post-payment only)
 //   10. analytics.js              — global analytics reporting
 //   11. confirmation-email.js     — buyer confirmation email
+//   12. notify-organizer.js       — Telegram sale ping to the event organizer
 //
 // All steps after the claim are best-effort / non-blocking: a failure in
 // any of them is logged and swallowed so the buyer's ticket is never lost
-// over an email, analytics, or referral hiccup.
+// over an email, analytics, or referral hiccup. Step 12 goes further and
+// isn't even awaited — see the call site below.
 
 import { adminDb } from "../../firebase-admin.js";
 import { isValidTicketReference } from "../reference-format.js";
@@ -37,6 +39,7 @@ import { finalizeReference } from "./finalize-reference.js";
 import { deliverSurveyResponse } from "./survey-delivery.js";
 import { reportAnalytics } from "./analytics.js";
 import { sendConfirmationEmail } from "./confirmation-email.js";
+import { notifyOrganizerOfSale } from "./notify-organizer.js";
 
 // ─── Exported core logic (called by webhook after charge.success) ─────────────
 export async function generateTickets(fastify, reference) {
@@ -159,6 +162,21 @@ export async function generateTickets(fastify, reference) {
     ticketTypesArray,
     buyerFullName,
     buyerEmail,
+  });
+
+  // ─── Step 12: Telegram sale notification to organizer ───────────────────────
+  // Deliberately NOT awaited — this must never add latency to the buyer's
+  // response or to the webhook's reply to Paystack. notifyOrganizerOfSale()
+  // handles its own success/failure logging internally.
+  const ticketTypeSummary = ticketTypesArray
+    .map((item) => `${item.type}${Number(item.quantity) > 1 ? ` x${item.quantity}` : ""}`)
+    .join(", ");
+  notifyOrganizerOfSale(fastify, {
+    eventId: paymentData.eventId,
+    buyerName: buyerFullName,
+    ticketSummary: ticketTypeSummary,
+    totalAmount: paymentData.totalAmount || 0,
+    ticketCount: totalTicketCount,
   });
 
   // ─── Return result ───────────────────────────────────────────────────────────

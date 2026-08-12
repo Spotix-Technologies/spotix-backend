@@ -9,6 +9,7 @@
 
 import { adminDb } from "./firebase-admin.js"
 import { FieldValue } from "firebase-admin/firestore"
+import { notifyPayoutStatus } from "./lib/notify-payout.js"
 
 const TERMINAL_STATUSES = {
   "transfer.success":  "successful",
@@ -101,6 +102,15 @@ export async function processTransferEvents(fastify, events) {
       errors.push(payoutId)
       continue
     }
+
+    // ── Telegram notification — fire-and-forget, never awaited ───────────────
+    notifyPayoutStatus(fastify, {
+      userId: payoutData.userId,
+      status: newStatus,
+      eventId: payoutData.eventId,
+      date: payoutData.date,
+      failureReason: payoutUpdate.failureReason,
+    })
 
     // ── Analytics — successful only ─────────────────────────────────────────
     if (newStatus !== "successful") continue

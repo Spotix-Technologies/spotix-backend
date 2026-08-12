@@ -8,32 +8,6 @@
 // BEFORE the buyer's checkout modal opens — but ONLY if that email has no
 // existing Customer record on the integration yet.
 //
-// Why I do am: PaystackPop.setup()'s own first_name/
-// last_name/phone config keys are NOT what Paystack uses to identify or
-// populate the Customer object — only `email` is. That's why
-// transaction.customer.first_name/last_name come back blank even though
-// checkout succeeds fine and our own metadata.custom_fields correctly
-// carry the buyer's full name through. Calling this first — which hits
-// Paystack's actual /customer API with the secret key — is what actually
-// attaches the name/phone to that email's Customer record.
-//
-// Why we only PATCH missing fields on an existing customer, never
-// overwrite populated ones: Paystack's POST /customer doesn't merge with
-// an existing record — a second POST for an already-registered email
-// just fails ("customer already exists"). Changing an existing
-// customer's details requires a separate PUT /customer/{customer_code}
-// call. We deliberately restrict that PUT to fields that are currently
-// blank on the Paystack record: the same email can legitimately be used
-// by different people across purchases (a shared family email, someone
-// buying on a friend's behalf, etc.), and overwriting a field that's
-// already populated would be surprising and could misattribute a
-// Paystack-side record to the wrong person. Filling in a gap (e.g. a
-// name was never captured on first use, phone is missing) carries none
-// of that risk, so it's safe to backfill.
-//
-// Fire-and-forget from the frontend's perspective: a failure here should
-// never block a payment from proceeding — metadata.custom_fields already
-// carries the buyer's name/phone as a fallback record regardless.
 
 import fetch from "node-fetch";
 
@@ -51,10 +25,6 @@ async function findExistingCustomer(email, secretKey) {
   return data.data;
 }
 
-// Builds a payload containing ONLY the fields that are missing on the
-// existing Paystack customer but were supplied on this request. Never
-// includes a field that's already populated on `existing` — that's what
-// keeps this a backfill instead of an overwrite.
 function buildMissingFieldsPatch(existing, { firstName, lastName, phone }) {
   const patch = {};
 
