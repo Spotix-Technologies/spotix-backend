@@ -22,7 +22,7 @@ export async function updateAdminDailySales(
     .collection(paymentData.eventId)
     .doc(purchaseDateFormatted);
 
-  const bookerNetAmount = Math.max(0, (paymentData.totalAmount || 0) - agentIncentiveAmount);
+  const bookerNetAmount = Math.max(0, (paymentData.ticketPrice || 0) - agentIncentiveAmount);
 
   try {
     const salesDoc = await adminSalesRef.get();
