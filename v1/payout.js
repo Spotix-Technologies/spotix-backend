@@ -2,22 +2,31 @@
  * v1/payout.js
  *
  * Processes Paystack transfer webhook events for the payout cycle.
- * Handles event payouts and poll payouts (type: "poll_payout").
  *
- * Poll payouts update the FLAT voting/{pollId} document.
+ * The `payouts` table now lives in Supabase (see /supabase/payout-schema.sql)
+ * — this used to update a Firestore `payouts/{id}` doc found by parsing a
+ * `{payoutId}AT{timestamp}` reference. Now the Paystack reference IS the
+ * Supabase row's primary key (`reference`, e.g. SPTX-TRNS-...), set at
+ * transfer-initiation time in v1/lib/payout/process.js, so resolution is
+ * a direct lookup — no parsing required.
+ *
+ * Idempotency: only acts on a row whose CURRENT status is "processing" —
+ * a redelivered webhook for an already-resolved row is a no-op. This is
+ * the same "only one caller ever transitions the terminal state" shape
+ * as v1/lib/voting/reference.js's credit lock, just enforced with a
+ * conditional UPDATE instead of a Firestore transaction.
  */
 
 import { adminDb } from "./firebase-admin.js"
 import { FieldValue } from "firebase-admin/firestore"
+import { supabaseAdmin } from "./lib/supabase-admin.js"
 import { notifyPayoutStatus } from "./lib/notify-payout.js"
 
 const TERMINAL_STATUSES = {
   "transfer.success":  "successful",
   "transfer.failed":   "failed",
-  "transfer.reversed": "reversed",
+  "transfer.reversed": "failed",
 }
-
-const TERMINAL_STATUS_SET = new Set(["successful", "failed", "reversed"])
 
 function getWATDateParts() {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -39,87 +48,80 @@ export async function processTransferEvents(fastify, events) {
 
   for (const { event, data } of events) {
     const newStatus = TERMINAL_STATUSES[event]
-    const reference = data?.reference  // "{payoutId}AT{timestamp}"
+    const reference = data?.reference // our SPTX-TRNS-... reference, echoed back verbatim
 
     if (!newStatus || !reference) {
       fastify.log.warn(`[payout] Skipping event ${event} — missing reference or unknown status`)
       continue
     }
 
-    // ── Extract payoutId ────────────────────────────────────────────────────
-    const atIndex = reference.lastIndexOf("AT")
-    if (atIndex === -1) {
-      fastify.log.warn(`[payout] Malformed reference: ${reference}`)
-      continue
+    fastify.log.info(`[payout] Processing ${event} for reference: ${reference}`)
+
+    // ── Idempotent claim: only proceed if currently "processing" ───────────
+    const failureReason =
+      event === "transfer.reversed"
+        ? (data?.gateway_response ?? data?.message ?? "Transfer was reversed")
+        : (data?.gateway_response ?? data?.message ?? "No reason provided")
+
+    const updatePayload = {
+      status: newStatus,
+      resolved_at: new Date().toISOString(),
     }
-    const payoutId = reference.slice(0, atIndex)
-    if (!payoutId) {
-      fastify.log.warn(`[payout] Empty payoutId from reference: ${reference}`)
-      continue
+    if (newStatus === "failed") {
+      updatePayload.failure_reason = failureReason
     }
 
-    fastify.log.info(`[payout] Processing ${event} for payoutId: ${payoutId}`)
-
-    // ── Fetch payout doc ────────────────────────────────────────────────────
-    const payoutRef = adminDb.collection("payouts").doc(payoutId)
-    let payoutData
-
+    let payoutRow
     try {
-      const snap = await payoutRef.get()
-      if (!snap.exists) {
-        fastify.log.warn(`[payout] No payout doc for payoutId: ${payoutId}`)
+      const { data: claimed, error } = await supabaseAdmin
+        .from("payouts")
+        .update(updatePayload)
+        .eq("reference", reference)
+        .eq("status", "processing")
+        .select()
+        .maybeSingle()
+
+      if (error) throw error
+
+      if (!claimed) {
+        fastify.log.info(`[payout] ${reference} not in "processing" (already resolved or unknown) — skipping`)
         continue
       }
-      payoutData = snap.data()
+      payoutRow = claimed
     } catch (err) {
-      fastify.log.error(`[payout] Firestore lookup error for ${payoutId}:`, err)
-      errors.push(payoutId)
+      fastify.log.error({ err }, `[payout] Supabase update failed for ${reference}`)
+      errors.push(reference)
       continue
     }
 
-    // ── Idempotency ─────────────────────────────────────────────────────────
-    if (TERMINAL_STATUS_SET.has(payoutData.status)) {
-      fastify.log.info(`[payout] Already "${payoutData.status}" — skipping ${payoutId}`)
-      continue
-    }
-
-    // ── Update payout status ────────────────────────────────────────────────
-    const payoutUpdate = {
-      status:      newStatus,
-      updatedAt:   FieldValue.serverTimestamp(),
-      processedAt: FieldValue.serverTimestamp(),
-    }
-
-    if (newStatus === "failed" || newStatus === "reversed") {
-      payoutUpdate.failureReason = data?.gateway_response ?? data?.message ?? "No reason provided"
-    }
-
+    // ── Duration: freeze the live timer at its final value ─────────────────
+    const durationSeconds = payoutRow.created_at
+      ? Math.max(0, Math.round((Date.now() - new Date(payoutRow.created_at).getTime()) / 1000))
+      : 0
     try {
-      await payoutRef.update(payoutUpdate)
-      fastify.log.info(`[payout] Updated ${payoutId} → ${newStatus}`)
+      await supabaseAdmin.from("payouts").update({ duration_seconds: durationSeconds }).eq("reference", reference)
     } catch (err) {
-      fastify.log.error(`[payout] Failed to update payout doc ${payoutId}:`, err)
-      errors.push(payoutId)
-      continue
+      fastify.log.warn({ err }, `[payout] Failed to write duration_seconds for ${reference}`)
     }
+
+    fastify.log.info(`[payout] ${reference} → ${newStatus}${newStatus === "failed" ? ` (${failureReason})` : ""}`)
 
     // ── Telegram notification — fire-and-forget, never awaited ───────────────
     notifyPayoutStatus(fastify, {
-      userId: payoutData.userId,
+      userId: payoutRow.user_id,
       status: newStatus,
-      eventId: payoutData.eventId,
-      date: payoutData.date,
-      failureReason: payoutUpdate.failureReason,
+      eventId: payoutRow.event_id,
+      date: payoutRow.pay_date,
+      failureReason: newStatus === "failed" ? failureReason : undefined,
     })
 
     // ── Analytics — successful only ─────────────────────────────────────────
     if (newStatus !== "successful") continue
 
-    const { userId, amount, type } = payoutData
-    const isPollPayout = type === "poll_payout"
+    const { user_id: userId, amount, is_poll: isPollPayout, event_id: eventId, poll_id: pollId } = payoutRow
 
     if (!userId || !amount) {
-      fastify.log.warn(`[payout] Skipping analytics for ${payoutId} — missing userId or amount`)
+      fastify.log.warn(`[payout] Skipping analytics for ${reference} — missing userId or amount`)
       continue
     }
 
@@ -144,30 +146,24 @@ export async function processTransferEvents(fastify, events) {
     })
 
     if (isPollPayout) {
-      // 3a. FLAT voting/{pollId} — update totalPaidOut
-      const { pollId } = payoutData
       if (pollId) {
         batch.update(adminDb.collection("voting").doc(pollId), {
           totalPaidOut: FieldValue.increment(amount),
         })
       }
-    } else {
-      // 3b. events/{eventId} — original event payout behaviour
-      const { eventId } = payoutData
-      if (eventId) {
-        batch.update(adminDb.collection("events").doc(eventId), {
-          totalPaidOut: FieldValue.increment(amount),
-        })
-      }
+    } else if (eventId) {
+      batch.update(adminDb.collection("events").doc(eventId), {
+        totalPaidOut: FieldValue.increment(amount),
+      })
     }
 
     try {
       await batch.commit()
       fastify.log.info(
-        `[payout] Analytics committed for ${payoutId} (${isPollPayout ? "poll" : "event"}) — ₦${amount}`
+        `[payout] Analytics committed for ${reference} (${isPollPayout ? "poll" : "event"}) — ₦${amount}`
       )
     } catch (err) {
-      fastify.log.error(`[payout] Analytics batch failed for ${payoutId}:`, err)
+      fastify.log.error({ err }, `[payout] Analytics batch failed for ${reference}`)
     }
   }
 
