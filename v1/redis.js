@@ -34,3 +34,14 @@ export const redis = new Redis({
 export async function invalidatePollCache(pollId) {
   await redis.del(`voting-poll-lookup:${pollId}`)
 }
+
+/**
+ * Busts the cached category tree for a group poll — see
+ * spotix-booker/app/lib/poll-categories.ts's fetchCategoryTree(), which
+ * writes to this exact same key (`poll-categories:{pollId}`) on the same
+ * shared Redis instance. Called from allocate-vote.js on every group-poll
+ * vote, since a vote changes a contestant's count inside that cached tree.
+ */
+export async function invalidateCategoryTreeCache(pollId) {
+  await redis.del(`poll-categories:${pollId}`)
+}

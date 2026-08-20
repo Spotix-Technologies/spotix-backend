@@ -196,7 +196,7 @@ export async function processVotingCharge(fastify, event, data, reference) {
         tieBreakerRound:  tbStateBeforeVote && tbStateBeforeVote.contestantIds?.includes(contestantId) ? tbStateBeforeVote.round : null,
       };
 
-      await allocateVote(fastify, pollRef, { pollData, pollType, contestantId, categoryId, numVotes, netAmount, targetPollId });
+      await allocateVote(fastify, pollRef, { adminDb, pollData, pollType, contestantId, categoryId, numVotes, netAmount, targetPollId });
 
       // spotix-user's public voting-poll page caches this poll for up to
       // 15s (see voting-poll-lookup:* in voting-utils.ts) precisely
