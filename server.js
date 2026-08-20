@@ -48,6 +48,11 @@ const allowedOrigins = new Set([
   "https://www.booker.spotix.com.ng",
   "https://spotix-backend.onrender.com",
   "https://console.spotix.com.ng",
+  "https://events.spotix.com.ng",
+  "https://www.events.spotix.com.ng",
+  "https://www.bot.spotix.com.ng",
+  "https://bot.spotix.com.ng",
+
   
 ]);
 
