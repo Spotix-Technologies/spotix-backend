@@ -5,16 +5,19 @@
  *
  * Handles:
  *   charge.success / charge.failed  (ticket_purchase)
- *   charge.success / charge.failed  (voting_purchase)  
+ *   charge.success / charge.failed  (voting_purchase)
+ *   charge.success / charge.failed  (election_form_purchase)
  *   transfer.*                       (payout cycle)
  */
 
 import crypto from "crypto";
 import { adminDb } from "./firebase-admin.js";
 import { processTransferEvents } from "./payout.js";
+import { processAdminTransferEvents, isAdminTransferReference } from "./lib/admin-transfer/events.js";
 import { generateTickets } from "./ticket.js";
 import { generateAgentTickets } from "./ticket-agent.js";
 import { processVotingCharge } from "./voting.js";          
+import { processElectionCharge } from "./election.js";
 
 const TRANSFER_EVENTS = new Set([
   "transfer.success",
@@ -146,6 +149,22 @@ export default async function webhookRoute(fastify, options) {
           }
         }
 
+        // ── Election candidate form purchase ─────────────────────────────
+        // Set by spotix-vote's lib/election/paystack/election-checkout.ts
+        // (metadata.custom_fields "type" = "election_form_purchase") when
+        // a candidate pays a paid office's form fee. Free offices never
+        // hit this webhook at all — spotix-vote inserts them straight
+        // into election_candidates itself, no payment involved.
+        if (transactionType === "election_form_purchase") {
+          try {
+            const result = await processElectionCharge(fastify, event, data, reference);
+            return reply.code(200).send({ success: true, ...result });
+          } catch (err) {
+            fastify.log.error("[webhook] processElectionCharge error:", err);
+            return reply.code(500).send({ error: "Election candidate processing failed" });
+          }
+        }
+
         // ── Unknown charge type ────────────────────────────────────────────
         fastify.log.info(`[webhook] Skipping unrecognised charge type: ${transactionType}`);
         return reply.code(200).send({ success: true, message: "Charge type not handled" });
@@ -154,7 +173,15 @@ export default async function webhookRoute(fastify, options) {
       // ── Transfer events (payout cycle) ────────────────────────────────────
       if (TRANSFER_EVENTS.has(event)) {
         try {
-          await processTransferEvents(fastify, [{ event, data }]);
+          // admin_transfers (Transfers menu, "SPTX-XFER-...") and payouts
+          // (booker/poll payouts, "SPTX-TRNS-...") use disjoint reference
+          // prefixes — dispatch to whichever table actually owns this
+          // reference instead of querying both on every delivery.
+          if (isAdminTransferReference(data?.reference)) {
+            await processAdminTransferEvents(fastify, [{ event, data }]);
+          } else {
+            await processTransferEvents(fastify, [{ event, data }]);
+          }
           return reply.code(200).send({ success: true, event });
         } catch (err) {
           fastify.log.error("[webhook] processTransferEvents error:", err);
