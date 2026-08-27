@@ -4,7 +4,7 @@ import { mailjet } from "./_mailjet-client.js"
 // form confirmation" template (v1/emails/election-form-confirmation.html)
 // is published — left blank on purpose, same pattern as
 // vote-purchase-confirmation.js.
-const ELECTION_FORM_CONFIRMATION_TEMPLATE_ID = 0
+const ELECTION_FORM_CONFIRMATION_TEMPLATE_ID = 8295547
 
 /**
  * Route: Election candidate form confirmation

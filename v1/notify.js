@@ -24,6 +24,7 @@
  *   /v1/notify/vault-notify
  *   /v1/notify/vote-purchase-confirmation  ← new: vote purchase receipt email
  *   /v1/notify/election-form-confirmation  ← new: election candidate form receipt email
+ *   /v1/notify/election-form-pay-later     ← new: election form "pay later" reminder email
  */
 
 import teamMemberAddedRoute from "./mail-routes/team-member-added.js"
@@ -37,6 +38,7 @@ import refundRequestRoute from "./mail-routes/refund-request.js"
 import vaultNotifyRoute from "./mail-routes/vault-notify.js"
 import votePurchaseConfirmationRoute from "./mail-routes/vote-purchase-confirmation.js"
 import electionFormConfirmationRoute from "./mail-routes/election-form-confirmation.js"
+import electionFormPayLaterRoute from "./mail-routes/election-form-pay-later.js"
 
 export default async function notifyRoutes(fastify, options) {
   await fastify.register(teamMemberAddedRoute)
@@ -50,4 +52,5 @@ export default async function notifyRoutes(fastify, options) {
   await fastify.register(vaultNotifyRoute)
   await fastify.register(votePurchaseConfirmationRoute)
   await fastify.register(electionFormConfirmationRoute)
+  await fastify.register(electionFormPayLaterRoute)
 }
