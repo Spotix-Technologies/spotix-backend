@@ -20,6 +20,17 @@
 // deriving from the legacy paymentData.buyerBearsBurden for references
 // old enough to only have that field.
 //
+// paystackFeeAbsorbedBy ("organizer" | "spotix", set from spotix-admin
+// only) further decides WHERE organizerPaystackFeeCost actually comes
+// out of when the buyer doesn't pay Paystack's fee: "organizer" (default,
+// same behaviour as before this field existed) deducts it right here from
+// bookerNetAmount; "spotix" leaves bookerNetAmount untouched entirely —
+// the organizer is paid out in full as if the buyer had covered it, and
+// the shortfall between what Paystack actually remitted and what's paid
+// out here is absorbed by Spotix's own platform-fee margin instead. There
+// is no separate "Spotix ledger" write for this: not deducting it from
+// the organizer IS Spotix absorbing it, since nothing else changes.
+//
 // Addons: paymentData.organizerAddonCostTotal is the sum of every
 // organizer-covered addon (see spotix-admin's Addons tab) on this
 // purchase — attendee-covered addons never touch this, they were
@@ -48,11 +59,15 @@ export async function updateAdminDailySales(
   const feeBurden = paymentData.feeBurden ?? {
     coversPaystackFee: false,
     coversSpotixFee: paymentData.buyerBearsBurden === false,
+    paystackFeeAbsorbedBy: "organizer",
   };
   const spotixFeeBurden = feeBurden.coversSpotixFee ? (paymentData.transactionFee || 0) : 0;
   // organizerPaystackFeeCost is already 0 when the buyer covered Paystack's
-  // fee (see computeOrderPricing in spotix-user) — no extra gating needed.
-  const paystackFeeBurden = paymentData.organizerPaystackFeeCost || 0;
+  // fee (see computeOrderPricing in spotix-user) — no extra gating needed
+  // for that half. What's gated here is WHO it comes out of: only deduct
+  // from the booker's balance when Spotix hasn't been set to absorb it.
+  const paystackFeeAbsorbedBySpotix = feeBurden.coversPaystackFee && feeBurden.paystackFeeAbsorbedBy === "spotix";
+  const paystackFeeBurden = paystackFeeAbsorbedBySpotix ? 0 : (paymentData.organizerPaystackFeeCost || 0);
   const organizerAddonCost = paymentData.organizerAddonCostTotal || 0;
 
   const bookerNetAmount = Math.max(
