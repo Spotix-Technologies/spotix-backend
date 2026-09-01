@@ -28,6 +28,7 @@ import dicebearRoute  from "./v1/dicebear.js";
 import customerRoute from "./v1/customer.js";
 import adminTransferRoute from "./v1/admin-transfer.js";
 import queueRoute from "./v1/queue.js";
+import postMortemRoute from "./v1/post-mortem.js";
 
 
 // Load env
@@ -109,6 +110,7 @@ fastify.register(dicebearRoute, { prefix: "/v1" });
 fastify.register(customerRoute, { prefix: "/v1" });
 fastify.register(adminTransferRoute, { prefix: "/v1" });
 fastify.register(queueRoute, { prefix: "/v1" });
+fastify.register(postMortemRoute, { prefix: "/v1" });
 // Serve frontend if dist exists
 const distPath = path.join(__dirname, "dist");
 
