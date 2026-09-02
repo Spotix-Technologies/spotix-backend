@@ -607,25 +607,19 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
       }
 
       // ── Revenue ──
+      // Organizers see what their event generated — not Spotix's cut, so
+      // this is a single figure (sum of each ticket's own ticketPrice; see
+      // data.js#ticketPriceOf and stats.js's revenue block) rather than a
+      // Gross/Fees/Net breakdown that would expose the transaction fee.
       sectionTitle(doc, "Revenue");
-      const revCardGap = 12;
-      const revCardWidth = (contentWidth - revCardGap * 2) / 3;
+      ensureSpace(doc, 54 + 10); // whole card row must land on one page — see ensureSpace() note below
       const revCardY = doc.y;
-      drawStatCard(doc, { x: PAGE_MARGIN, y: revCardY, width: revCardWidth, label: "Gross Sales", value: money(stats.revenue.totalGross) });
       drawStatCard(doc, {
-        x: PAGE_MARGIN + revCardWidth + revCardGap,
+        x: PAGE_MARGIN,
         y: revCardY,
-        width: revCardWidth,
-        label: "Transaction Fees",
-        value: money(stats.revenue.totalTransactionFees),
-        accent: "#d97706",
-      });
-      drawStatCard(doc, {
-        x: PAGE_MARGIN + (revCardWidth + revCardGap) * 2,
-        y: revCardY,
-        width: revCardWidth,
-        label: "Net Ticket Value",
-        value: money(stats.revenue.totalTicketValue),
+        width: contentWidth,
+        label: "Total Revenue Generated",
+        value: money(stats.revenue.totalRevenue),
         accent: "#16a34a",
       });
       doc.y = revCardY + 54 + 10;
@@ -634,6 +628,14 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
       sectionTitle(doc, "Referrals & Discounts");
       const acqCardGap = 12;
       const acqCardWidth = (contentWidth - acqCardGap * 2) / 3;
+      // Without this, drawStatCard()'s absolute-positioned .text() calls
+      // can land close enough to the page bottom that pdfkit silently
+      // starts a new page mid-card (see continueOnNewPage() note up top) —
+      // that's what scattered "Gross Sales" / "Transaction Fees" / "Net
+      // Ticket Value" across three different pages instead of one row.
+      // Reserving the row's full height up front forces the whole row
+      // onto a single page.
+      ensureSpace(doc, 54 + 14);
       const acqCardY = doc.y;
       drawStatCard(doc, {
         x: PAGE_MARGIN,
@@ -664,6 +666,7 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
         doc.fontSize(9).font("Body-Bold").fillColor(INK).text("Discount codes used:", PAGE_MARGIN, doc.y, { width: contentWidth });
         doc.moveDown(0.3);
         stats.acquisition.topDiscountCodes.forEach((d) => {
+          ensureSpace(doc, 12);
           doc.fontSize(8.5).font("Body").fillColor(MUTED).text(`${d.code} — ${d.count} ticket${d.count === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
             width: contentWidth,
           });
@@ -675,6 +678,7 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
         doc.fontSize(9).font("Body-Bold").fillColor(INK).text("Top referrers:", PAGE_MARGIN, doc.y, { width: contentWidth });
         doc.moveDown(0.3);
         stats.acquisition.topReferrers.forEach((r) => {
+          ensureSpace(doc, 12);
           doc.fontSize(8.5).font("Body").fillColor(MUTED).text(`${r.label} — ${r.count} ticket${r.count === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
             width: contentWidth,
           });
@@ -716,7 +720,7 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
       // ── Full attendee timeline ──
       sectionTitle(doc, "Complete Attendee Timeline");
       renderTable(doc, {
-        headers: ["Reference", "Name", "Email", "Ticket Type", "Purchased", "Ticket Value", "Checked In"],
+        headers: ["Reference", "Name", "Email", "Ticket Type", "Purchased", "Ticket Price", "Checked In"],
         colWidths: colWidthsFromRatios(contentWidth, [0.14, 0.15, 0.24, 0.11, 0.15, 0.11, 0.1]),
         rows: stats.fullTimelineForTable.map((a) => [
           a.ticketReference,
@@ -724,7 +728,10 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
           a.email,
           a.ticketType,
           a.purchaseDate ? fmtDateTime(a.purchaseDate) : "Unknown",
-          typeof a.ticketValue === "number" ? money(a.ticketValue) : "—",
+          // Each ticket's own price (data.js#ticketPriceOf) — not the
+          // shared order total, which would show the same amount for
+          // every ticket in a multi-ticket purchase.
+          typeof a.ticketPrice === "number" ? money(a.ticketPrice) : "—",
           a.verified ? "Yes" : "No",
         ]),
       });

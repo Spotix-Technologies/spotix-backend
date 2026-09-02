@@ -53,16 +53,17 @@ function purchaseDateTime(a) {
   return toDate(a.createdAt);
 }
 
-/** Ticket Value = totalAmount minus the Paystack transaction fee — what
- *  the organizer actually nets per ticket, not the sticker price. Both
- *  fields live directly on the same attendee/ticket doc (see
- *  write-tickets.js). Returns null (not 0) when totalAmount is missing so
- *  the PDF can render "—" instead of a misleading ₦0. */
-function ticketValue(a) {
-  const total = Number(a.totalAmount);
-  if (!Number.isFinite(total)) return null;
-  const fee = Number(a.transactionFee);
-  return total - (Number.isFinite(fee) ? fee : 0);
+/** Ticket Price = the price of THIS ticket, per write-tickets.js
+ *  (`ticketPrice: seat.price`, written once per ticket doc). This is
+ *  distinct from `totalAmount`, which is the whole order's total and is
+ *  written identically onto every ticket doc created from that order —
+ *  reading `totalAmount` for a 2-ticket order attributes the full order
+ *  total (e.g. ₦10,000) to each individual ticket instead of its actual
+ *  ₦5,000 price. Returns null (not 0) when ticketPrice is missing so the
+ *  PDF can render "—" instead of a misleading ₦0. */
+function ticketPriceOf(a) {
+  const price = Number(a.ticketPrice);
+  return Number.isFinite(price) ? price : null;
 }
 
 export async function fetchEventForPostMortem(eventId) {
@@ -106,15 +107,35 @@ export async function fetchAttendeesForPostMortem(eventId) {
       verified: a.verified === true,
       purchaseDate: purchaseDateTime(a),
       checkedInAt: toDate(a.checkedInAt),
-      totalAmount: Number.isFinite(Number(a.totalAmount)) ? Number(a.totalAmount) : 0,
-      transactionFee: Number.isFinite(Number(a.transactionFee)) ? Number(a.transactionFee) : 0,
-      ticketValue: ticketValue(a),
+      ticketPrice: ticketPriceOf(a),
       discountApplied: a.discountApplied === true,
       discountCode: a.discountCode || null,
       referralCode: a.referralCode || null,
       referralName: a.referralName || null,
     };
   });
+}
+
+/** events/{eventId}/referrals/{code} — the canonical source for referral
+ *  usage counts. Each doc's `totalTickets` is a running counter
+ *  incremented atomically at purchase time (see v1/lib/ticket/referral.js)
+ *  and is the number to use for "top referrers" — NOT a tally of
+ *  attendee docs' `referralCode` field, and NOT anything derived from
+ *  `totalAmount`/order totals. Returns codes with at least one ticket,
+ *  sorted highest first. */
+export async function fetchReferralsForPostMortem(eventId) {
+  const snap = await adminDb.collection("events").doc(eventId).collection("referrals").get();
+
+  return snap.docs
+    .map((d) => {
+      const r = d.data() || {};
+      return {
+        code: d.id,
+        totalTickets: Number.isFinite(Number(r.totalTickets)) ? Number(r.totalTickets) : 0,
+      };
+    })
+    .filter((r) => r.totalTickets > 0)
+    .sort((a, b) => b.totalTickets - a.totalTickets);
 }
 
 /** events/{eventId}/questions — the organizer's survey form, if any (see

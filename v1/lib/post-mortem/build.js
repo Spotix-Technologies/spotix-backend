@@ -11,6 +11,7 @@ import { supabaseAdmin } from "../supabase-admin.js";
 import {
   fetchEventForPostMortem,
   fetchAttendeesForPostMortem,
+  fetchReferralsForPostMortem,
   fetchSurveyQuestionsForPostMortem,
   fetchSurveyResponsesForPostMortem,
   hasEventEnded,
@@ -128,8 +129,11 @@ export async function runGeneration(fastify, { eventId, eventName, requestedBy }
       return;
     }
 
-    const attendees = await fetchAttendeesForPostMortem(eventId);
-    const stats = computeStats(attendees);
+    const [attendees, referrals] = await Promise.all([
+      fetchAttendeesForPostMortem(eventId),
+      fetchReferralsForPostMortem(eventId),
+    ]);
+    const stats = computeStats(attendees, referrals);
 
     // Survey is optional — an event without a form has no questions
     // subcollection at all, so this is just an empty array, and the PDF

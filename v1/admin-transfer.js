@@ -18,11 +18,17 @@
  *   GET  /v1/admin/transfer-fee        ?amount=X
  *   POST /v1/admin/initiate-transfer   { reference, amount, reason,
  *                                         bankCode, accountNumber, accountName,
- *                                         recipientCode? }
+ *                                         recipientCode?, recipientEmail? }
  *     Creates a Paystack transfer recipient if recipientCode isn't
  *     already known, then initiates the transfer for `amount` (this is
- *     already amount-after-fee — spotix-admin subtracts the fee before
- *     calling this). Returns { recipientCode, transferCode, status }.
+ *     already amount-after-fee for the admin Transfers menu — the admin
+ *     Disbursements/Payments feature passes the full disbursed amount
+ *     as-is, see spotix-admin's app/api/v1/payments/withdraw).
+ *     recipientEmail is optional and only ever supplied by the
+ *     Disbursements/Payments withdrawal flow (spotix-admin's
+ *     app/lib/paystack-admin.ts → initiateBackendTransfer), so the team
+ *     member's email travels with the Paystack recipient record.
+ *     Returns { recipientCode, transferCode, status }.
  *     Terminal resolution (successful/failed) is NOT synchronous — same
  *     as the existing booker payout pipeline, it arrives later via the
  *     transfer.* webhook (see v1/webhook.js → v1/lib/admin-transfer/events.js),
@@ -131,7 +137,7 @@ export default async function adminTransferRoute(fastify, options) {
   fastify.post("/admin/initiate-transfer", async (request, reply) => {
     if (requireInternalSecret(request, reply)) return;
 
-    const { reference, amount, reason, bankCode, accountNumber, accountName } = request.body || {};
+    const { reference, amount, reason, bankCode, accountNumber, accountName, recipientEmail } = request.body || {};
     let { recipientCode } = request.body || {};
 
     if (!reference || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !reason) {
@@ -143,7 +149,11 @@ export default async function adminTransferRoute(fastify, options) {
         if (!bankCode || !accountNumber || !accountName) {
           return reply.code(400).send({ success: false, error: "bankCode, accountNumber, and accountName are required to create a recipient" });
         }
-        const recipient = await createTransferRecipient({ name: accountName, accountNumber, bankCode });
+        // recipientEmail is optional — supplied by the admin Disbursements
+        // feature (a team member withdrawing their own payout) so Paystack
+        // has the recipient's email on file against the transfer recipient
+        // it creates. The booker/admin-transfer flows never pass this.
+        const recipient = await createTransferRecipient({ name: accountName, accountNumber, bankCode, email: recipientEmail });
         recipientCode = recipient.recipientCode;
       }
 

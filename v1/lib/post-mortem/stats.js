@@ -42,7 +42,7 @@ function bucketByDayOrHour(dates) {
   };
 }
 
-export function computeStats(rawAttendees) {
+export function computeStats(rawAttendees, referrals = []) {
   const withPurchase = rawAttendees.filter((a) => a.purchaseDate instanceof Date);
   const withoutPurchase = rawAttendees.filter((a) => !(a.purchaseDate instanceof Date));
 
@@ -97,11 +97,6 @@ export function computeStats(rawAttendees) {
   withDiscount.forEach((a) => {
     discountCodeCounts.set(a.discountCode, (discountCodeCounts.get(a.discountCode) || 0) + 1);
   });
-  const referralCodeCounts = new Map();
-  withReferral.forEach((a) => {
-    const label = a.referralName ? `${a.referralName} (${a.referralCode})` : a.referralCode;
-    referralCodeCounts.set(label, (referralCodeCounts.get(label) || 0) + 1);
-  });
 
   const total = rawAttendees.length || 1; // guard div-by-zero for percentages
   const acquisition = {
@@ -114,16 +109,22 @@ export function computeStats(rawAttendees) {
     topDiscountCodes: [...discountCodeCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([code, count]) => ({ code, count })),
-    topReferrers: [...referralCodeCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, count]) => ({ label, count })),
+    // Sourced from events/{eventId}/referrals/{code}.totalTickets (see
+    // data.js#fetchReferralsForPostMortem) — NOT a tally of attendee docs.
+    // A referral doc's totalTickets is the correct per-code usage count;
+    // deriving it from attendees would double-handle nothing here, but
+    // keeping one source of truth avoids drift if a code is ever renamed
+    // or a ticket transferred.
+    topReferrers: referrals.map((r) => ({ label: r.code, count: r.totalTickets })),
   };
 
-  // ── Ticket value (revenue net of transaction fees) ──
-  const withTicketValue = rawAttendees.filter((a) => typeof a.ticketValue === "number");
-  const totalTicketValue = withTicketValue.reduce((sum, a) => sum + a.ticketValue, 0);
-  const totalTransactionFees = rawAttendees.reduce((sum, a) => sum + (a.transactionFee || 0), 0);
-  const totalGross = rawAttendees.reduce((sum, a) => sum + (a.totalAmount || 0), 0);
+  // ── Revenue: sum of each ticket's own price (see data.js#ticketPriceOf
+  // for why this must be ticketPrice, not totalAmount). This is the
+  // number the organizer cares about — what their event generated from
+  // ticket sales. Spotix's transaction fee is Spotix's own business and
+  // is deliberately not surfaced here. ──
+  const withTicketPrice = rawAttendees.filter((a) => typeof a.ticketPrice === "number");
+  const totalRevenue = withTicketPrice.reduce((sum, a) => sum + a.ticketPrice, 0);
 
   return {
     totalAttendees: rawAttendees.length,
@@ -150,9 +151,7 @@ export function computeStats(rawAttendees) {
 
     acquisition,
     revenue: {
-      totalGross,
-      totalTransactionFees,
-      totalTicketValue,
+      totalRevenue,
     },
   };
 }

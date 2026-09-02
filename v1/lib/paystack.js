@@ -101,7 +101,7 @@ export async function listRecentTransfers({ page = 1, perPage = 20 } = {}) {
   return { transfers, meta: data.meta ?? null };
 }
 
-export async function createTransferRecipient({ name, accountNumber, bankCode }) {
+export async function createTransferRecipient({ name, accountNumber, bankCode, email }) {
   const data = await paystackFetch("/transferrecipient", {
     method: "POST",
     body: JSON.stringify({
@@ -110,6 +110,12 @@ export async function createTransferRecipient({ name, accountNumber, bankCode })
       account_number: accountNumber,
       bank_code: bankCode,
       currency: "NGN",
+      // Optional — Paystack stores this against the recipient record for
+      // its own dashboard/notification purposes. Used by the admin
+      // Disbursements feature (v1/admin-transfer.js's /admin/initiate-transfer)
+      // so a team member's email travels with the recipient Paystack
+      // creates on their behalf, same as it would for a normal payout.
+      ...(email ? { email } : {}),
     }),
   });
   return { recipientCode: data.data.recipient_code };
