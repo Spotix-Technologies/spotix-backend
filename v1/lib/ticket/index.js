@@ -160,6 +160,7 @@ export async function generateTickets(fastify, reference) {
     createdTicketIds,
     totalTicketCount,
     ticketTypesArray,
+    ticketSeats,
     buyerFullName,
     buyerEmail,
   });

@@ -13,6 +13,21 @@ import PDFDocument from "pdfkit";
 import SVGtoPDF from "svg-to-pdfkit";
 import { createAvatar } from "@dicebear/core";
 import { micah } from "@dicebear/collection";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// pdfkit's built-in "Helvetica" is a base-14 PDF font with WinAnsi
+// encoding only — it has no glyph for "₦" (U+20A6), so money() calls
+// were silently rendering as a notdef box/pipe character. Vendoring
+// DejaVu Sans (same fix spotix-booker already applies for its own PDF
+// reports — see app/lib/poll-results-pdf.ts and pdf-report-kit.ts over
+// there) gives full glyph coverage. Unlike pdf-lib, pdfkit embeds TTFs
+// natively via registerFont() — no separate fontkit package needed.
+// Resolved relative to this file (not process.cwd()) since this runs as
+// a Fastify service, not a Next.js app with a fixed project root.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FONT_REGULAR = path.join(__dirname, "fonts", "DejaVuSans.ttf");
+const FONT_BOLD = path.join(__dirname, "fonts", "DejaVuSans-Bold.ttf");
 
 const BRAND = "#6b2fa5";
 const BRAND_LIGHT = "#f9f5ff";
@@ -51,6 +66,53 @@ function embedAvatar(doc, seed, x, y, size) {
   }
 }
 
+/** Pre-truncates `text` (at the doc's CURRENT font/fontSize) to fit
+ *  `maxWidth`, appending an ellipsis if it had to cut. Measures with
+ *  doc.widthOfString() and binary-searches the longest fitting prefix.
+ *
+ *  Every single-line field in this file used to rely on pdfkit's own
+ *  `width` + `lineBreak: false` + `ellipsis: true` combo instead. That
+ *  combo doesn't do what it looks like it does: `ellipsis` only actually
+ *  activates when an explicit `height` option is *also* passed (never
+ *  was, anywhere in this file) — so it silently never truncated anything.
+ *  And `lineBreak: false` only stops wrapping *between* separate words;
+ *  a single long unbreakable token (a full ticket reference like
+ *  "SPTX-REF-1786429402528-VZ", a no-space email) that doesn't fit the
+ *  column still gets force-split across multiple internal lines by
+ *  pdfkit's word-wrapper regardless of that flag. Passing `width` at all
+ *  routes text() through pdfkit's LineWrapper, and if one of those forced
+ *  extra lines lands near the bottom of a page, LineWrapper silently
+ *  starts a *real* new page mid-cell (doc.continueOnNewPage()) — which is
+ *  exactly what was cutting references in half across a page boundary,
+ *  compressing rows, and leaving the trailing blank pages: every table
+ *  row after that point kept drawing against this file's own manually
+ *  tracked `y`, which had no idea pdfkit had silently added a page out
+ *  from under it.
+ *
+ *  Truncating here ourselves and then calling doc.text() with NO `width`
+ *  option (see below) means the string is already guaranteed to render
+ *  on one line, so none of that wrapping/pagination machinery ever runs —
+ *  pdfkit takes the plain single-line path instead. */
+function truncate(doc, text, maxWidth) {
+  const str = String(text ?? "");
+  if (maxWidth <= 0) return "";
+  if (doc.widthOfString(str) <= maxWidth) return str;
+
+  const ellipsis = "…";
+  const ellipsisWidth = doc.widthOfString(ellipsis);
+  if (ellipsisWidth > maxWidth) return "";
+
+  let lo = 0;
+  let hi = str.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    const candidateWidth = doc.widthOfString(str.slice(0, mid)) + ellipsisWidth;
+    if (candidateWidth <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? str.slice(0, lo) + ellipsis : ellipsis;
+}
+
 function ensureSpace(doc, needed) {
   const bottom = doc.page.height - doc.page.margins.bottom;
   if (doc.y + needed > bottom) {
@@ -61,7 +123,7 @@ function ensureSpace(doc, needed) {
 function sectionTitle(doc, text) {
   ensureSpace(doc, 40);
   doc.moveDown(0.8);
-  doc.fontSize(14).font("Helvetica-Bold").fillColor(INK).text(text, PAGE_MARGIN, doc.y, {
+  doc.fontSize(14).font("Body-Bold").fillColor(INK).text(text, PAGE_MARGIN, doc.y, {
     width: doc.page.width - PAGE_MARGIN * 2,
   });
   doc.moveTo(PAGE_MARGIN, doc.y + 4).lineTo(doc.page.width - PAGE_MARGIN, doc.y + 4).strokeColor(BRAND_BORDER).lineWidth(1).stroke();
@@ -86,7 +148,7 @@ function drawBarChart(doc, { buckets, color = BRAND, emptyText = "No data availa
 
   const hasData = buckets && buckets.length > 0 && buckets.some((b) => b.value > 0);
   if (!hasData) {
-    doc.fontSize(9).fillColor(MUTED).font("Helvetica").text(emptyText, x, plotBottom / 2 + chartY / 2, {
+    doc.fontSize(9).fillColor(MUTED).font("Body").text(emptyText, x, plotBottom / 2 + chartY / 2, {
       width,
       align: "center",
     });
@@ -111,14 +173,17 @@ function drawBarChart(doc, { buckets, color = BRAND, emptyText = "No data availa
     doc.rect(bx, by, barWidth, Math.max(barHeight, 0.5)).fill(color);
 
     if (i % labelStep === 0 || i === n - 1) {
-      doc.fontSize(6).fillColor(MUTED).font("Helvetica").text(b.label, bx - 10, plotBottom + 4, {
-        width: barWidth + 20,
-        align: "center",
-      });
+      const labelWidth = barWidth + 20;
+      doc.fontSize(6).fillColor(MUTED).font("Body");
+      const fitted = truncate(doc, b.label, labelWidth);
+      // Manual centering, no `width` passed to text() — see truncate()'s
+      // comment for why `width` is avoided on pre-fitted single lines.
+      const fittedWidth = doc.widthOfString(fitted);
+      doc.text(fitted, bx - 10 + (labelWidth - fittedWidth) / 2, plotBottom + 4, { lineBreak: false });
     }
   });
 
-  doc.fontSize(8).fillColor(INK).font("Helvetica-Bold").text(`Peak: ${maxValue}`, x, chartY, {
+  doc.fontSize(8).fillColor(INK).font("Body-Bold").text(`Peak: ${maxValue}`, x, chartY, {
     width,
     align: "right",
   });
@@ -127,13 +192,115 @@ function drawBarChart(doc, { buckets, color = BRAND, emptyText = "No data availa
   doc.y = chartY + height;
 }
 
+const CHART_PALETTE = [BRAND, "#16a34a", "#d97706", "#dc2626", "#0ea5e9", "#9333ea", "#64748b", "#0891b2"];
+
+/** Single-choice (radio) question: a pie chart plus a text key of the
+ *  form "Item A: 62%, Item B: 38%" underneath, as requested. Reserves its
+ *  own space with ensureSpace and advances doc.y past everything it drew. */
+function drawPieChart(doc, { segments, emptyText = "No responses yet" }) {
+  const contentWidth = doc.page.width - PAGE_MARGIN * 2;
+  const radius = 55;
+  const chartHeight = radius * 2 + 14;
+  const total = segments.reduce((s, seg) => s + seg.count, 0);
+
+  if (total === 0) {
+    ensureSpace(doc, 30);
+    doc.fontSize(9).fillColor(MUTED).font("Body").text(emptyText, PAGE_MARGIN, doc.y, { width: contentWidth });
+    doc.moveDown();
+    return;
+  }
+
+  ensureSpace(doc, chartHeight + 8);
+  const top = doc.y;
+  const cx = PAGE_MARGIN + radius + 4;
+  const cy = top + radius;
+
+  doc.save();
+  let startAngle = -Math.PI / 2;
+  segments.forEach((seg, i) => {
+    if (seg.count <= 0) return;
+    const angle = (seg.count / total) * Math.PI * 2;
+    const endAngle = startAngle + angle;
+    const color = CHART_PALETTE[i % CHART_PALETTE.length];
+    const x1 = cx + radius * Math.cos(startAngle);
+    const y1 = cy + radius * Math.sin(startAngle);
+    const x2 = cx + radius * Math.cos(endAngle);
+    const y2 = cy + radius * Math.sin(endAngle);
+    const largeArc = angle > Math.PI ? 1 : 0;
+    doc.path(`M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`).fill(color);
+    startAngle = endAngle;
+  });
+  doc.restore();
+
+  // Legend to the right of the pie — flowed text (no explicit y per
+  // line), so it advances doc.y normally and can page-break safely on
+  // its own if the option list is long.
+  const legendX = cx + radius + 24;
+  const legendWidth = PAGE_MARGIN + contentWidth - legendX;
+  doc.y = top;
+  segments.forEach((seg, i) => {
+    const color = CHART_PALETTE[i % CHART_PALETTE.length];
+    const rowY = doc.y;
+    doc.save().rect(legendX, rowY + 2, 8, 8).fill(color).restore();
+    const label = truncate(doc, `${seg.label} — ${seg.pct}% (${seg.count})`, legendWidth - 14);
+    doc.fillColor(INK).font("Body").fontSize(8).text(label, legendX + 14, rowY, { lineBreak: false });
+    doc.y = rowY + 13;
+  });
+
+  doc.y = Math.max(doc.y, top + chartHeight);
+
+  // The plain-text key, exactly the "Item A: x%, Item B: y%" format.
+  const keyText = segments.map((seg) => `${seg.label}: ${seg.pct}%`).join(", ");
+  doc.fontSize(8).font("Body-Oblique").fillColor(MUTED).text(keyText, PAGE_MARGIN, doc.y + 4, {
+    width: contentWidth,
+  });
+  doc.moveDown(0.6);
+}
+
+/** Multi-choice (checkbox) question: one horizontal proportional bar per
+ *  option, label at left (respondents can pick more than one option, so
+ *  these percentages are of respondents and can sum past 100% — a pie
+ *  would misrepresent that, hence a bar list instead). */
+function drawChoiceBreakdown(doc, { segments, emptyText = "No responses yet" }) {
+  const contentWidth = doc.page.width - PAGE_MARGIN * 2;
+  const total = segments.reduce((s, seg) => s + seg.count, 0);
+
+  if (total === 0) {
+    ensureSpace(doc, 30);
+    doc.fontSize(9).fillColor(MUTED).font("Body").text(emptyText, PAGE_MARGIN, doc.y, { width: contentWidth });
+    doc.moveDown();
+    return;
+  }
+
+  const labelWidth = 150;
+  const barMaxWidth = contentWidth - labelWidth - 50;
+  const rowHeight = 20;
+
+  segments.forEach((seg, i) => {
+    ensureSpace(doc, rowHeight);
+    const rowY = doc.y;
+    const color = CHART_PALETTE[i % CHART_PALETTE.length];
+    doc.fillColor(INK).font("Body").fontSize(8);
+    doc.text(truncate(doc, seg.label, labelWidth - 6), PAGE_MARGIN, rowY + 3, { lineBreak: false });
+
+    const barX = PAGE_MARGIN + labelWidth;
+    const barWidth = Math.max(2, (seg.pct / 100) * barMaxWidth);
+    doc.save().rect(barX, rowY, barMaxWidth, 12).fill("#f1f5f9").restore();
+    doc.save().rect(barX, rowY, barWidth, 12).fill(color).restore();
+    doc.fillColor(MUTED).font("Body").fontSize(7.5);
+    doc.text(`${seg.pct}% (${seg.count})`, barX + barMaxWidth + 6, rowY + 3, { lineBreak: false });
+
+    doc.y = rowY + rowHeight;
+  });
+}
+
 function drawStatCard(doc, { x, y, width, label, value, accent = BRAND }) {
   const height = 54;
   doc.save();
   doc.roundedRect(x, y, width, height, 6).fillAndStroke("#ffffff", FAINT_BORDER);
   doc.rect(x, y, 4, height).fill(accent);
-  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(label, x + 14, y + 10, { width: width - 24 });
-  doc.fillColor(INK).font("Helvetica-Bold").fontSize(18).text(String(value), x + 14, y + 24, { width: width - 24 });
+  doc.fillColor(MUTED).font("Body").fontSize(8).text(label, x + 14, y + 10, { width: width - 24 });
+  doc.fillColor(INK).font("Body-Bold").fontSize(18).text(String(value), x + 14, y + 24, { width: width - 24 });
   doc.restore();
 }
 
@@ -149,34 +316,21 @@ function drawPersonCard(doc, { x, y, width, height = 78, title, name, email, det
   const textX = avatarX + avatarSize + 12;
   const textWidth = width - (textX - x) - 12;
 
-  // lineBreak: false is what actually makes `ellipsis` truncate to a
-  // single line — without it pdfkit just wraps onto a second line (since
-  // no `height` is given), which then overlaps whichever field is drawn
-  // next at its own fixed y-offset. That's the "smudged" overlapping text
-  // seen on longer award titles/names (e.g. "Night Owl — latest purchase
-  // time") — every fixed-position single-line field in this card needs it.
-  doc.fillColor(accent).font("Helvetica-Bold").fontSize(8.5).text(title.toUpperCase(), textX, y + 10, {
-    width: textWidth,
-    characterSpacing: 0.3,
-    lineBreak: false,
-    ellipsis: true,
-  });
-  doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text(name || "Unknown", textX, y + 24, {
-    width: textWidth,
-    lineBreak: false,
-    ellipsis: true,
-  });
-  doc.fillColor(MUTED).font("Helvetica").fontSize(7.5).text(email || "", textX, y + 38, {
-    width: textWidth,
-    lineBreak: false,
-    ellipsis: true,
-  });
+  // Pre-truncated via truncate(), then text() called with no `width` —
+  // see that function's comment. This card's own fixed y-offsets per
+  // field are why the old wrap-onto-a-second-line failure mode showed up
+  // as visibly overlapping text (a wrapped title bleeding down into the
+  // name row below it), even though it never triggered an actual page
+  // break the way the table rows did.
+  doc.fillColor(accent).font("Body-Bold").fontSize(8.5);
+  doc.text(truncate(doc, title.toUpperCase(), textWidth), textX, y + 10, { characterSpacing: 0.3, lineBreak: false });
+  doc.fillColor(INK).font("Body-Bold").fontSize(10);
+  doc.text(truncate(doc, name || "Unknown", textWidth), textX, y + 24, { lineBreak: false });
+  doc.fillColor(MUTED).font("Body").fontSize(7.5);
+  doc.text(truncate(doc, email || "", textWidth), textX, y + 38, { lineBreak: false });
   if (detail) {
-    doc.fillColor(accent).font("Helvetica").fontSize(7.5).text(detail, textX, y + 51, {
-      width: textWidth,
-      lineBreak: false,
-      ellipsis: true,
-    });
+    doc.fillColor(accent).font("Body").fontSize(7.5);
+    doc.text(truncate(doc, detail, textWidth), textX, y + 51, { lineBreak: false });
   }
   doc.restore();
 }
@@ -198,9 +352,9 @@ function drawTableHeader(doc, x, y, colWidths, headers) {
   doc.save();
   doc.rect(x, y, totalWidth, 18).fill(BRAND);
   let cx = x;
-  doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#ffffff");
+  doc.font("Body-Bold").fontSize(7.5).fillColor("#ffffff");
   headers.forEach((h, i) => {
-    doc.text(h, cx + 5, y + 5.5, { width: colWidths[i] - 8, lineBreak: false, ellipsis: true });
+    doc.text(truncate(doc, h, colWidths[i] - 8), cx + 5, y + 5.5, { lineBreak: false });
     cx += colWidths[i];
   });
   doc.restore();
@@ -221,15 +375,14 @@ function renderTable(doc, { headers, colWidths, rows }) {
     if (i % 2 === 1) {
       doc.save().rect(x, y, colWidths.reduce((a, b) => a + b, 0), rowHeight).fill("#f8fafc").restore();
     }
-    doc.font("Helvetica").fontSize(7).fillColor(INK);
+    doc.font("Body").fontSize(7).fillColor(INK);
     let cx = x;
     row.forEach((v, ci) => {
-      // lineBreak: false forces a hard one-line truncation instead of
-      // wrapping into the row below it — long values (full references
-      // like "SPTX-REF-1786429402528-VZ", long emails) were previously
-      // wrapping onto a second line inside a fixed 16pt row and bleeding
-      // into the next row's text.
-      doc.text(String(v ?? ""), cx + 5, y + 4, { width: colWidths[ci] - 8, lineBreak: false, ellipsis: true });
+      // Pre-truncated, no `width` passed to text() — see truncate()'s
+      // comment for why: that's what actually keeps this on one line and
+      // off pdfkit's own pagination path, unlike the lineBreak/ellipsis
+      // combo this used to rely on.
+      doc.text(truncate(doc, v, colWidths[ci] - 8), cx + 5, y + 4, { lineBreak: false });
       cx += colWidths[ci];
     });
     y += rowHeight;
@@ -238,10 +391,24 @@ function renderTable(doc, { headers, colWidths, rows }) {
   doc.y = y + 12;
 }
 
-export async function renderPostMortemPdf({ event, stats, generatedByName, generatedAt }) {
+export async function renderPostMortemPdf({ event, stats, surveyStats = [], generatedByName, generatedAt }) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: "A4", margin: PAGE_MARGIN, bufferPages: true });
+      // Registered under our own names, NOT "Helvetica"/"Helvetica-Bold".
+      // Overriding pdfkit's built-in standard-14 names with a custom TTF
+      // "works" for plain ASCII but silently breaks non-ASCII glyphs
+      // (confirmed: ₦ rendered fine under a custom font name, but as a
+      // notdef box under a font registered as "Helvetica", even loading
+      // the identical DejaVuSans.ttf file both times) — pdfkit special-
+      // cases the base-14 names somewhere in its encoding path regardless
+      // of registerFont(). Using distinct names sidesteps that entirely.
+      doc.registerFont("Body", FONT_REGULAR);
+      doc.registerFont("Body-Bold", FONT_BOLD);
+      // No separate italic TTF vendored — DejaVu Sans doesn't do
+      // synthetic oblique, so this just maps to the same regular face
+      // rather than pulling in a fourth font file for one line of text.
+      doc.registerFont("Body-Oblique", FONT_REGULAR);
       const chunks = [];
       doc.on("data", (chunk) => chunks.push(chunk));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -251,7 +418,7 @@ export async function renderPostMortemPdf({ event, stats, generatedByName, gener
 
       // ── Cover / header ──
       doc.rect(0, 0, doc.page.width, 120).fill(BRAND);
-      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(22).text(
+      doc.fillColor("#ffffff").font("Body-Bold").fontSize(22).text(
         `Attendee Post Mortem Data for ${event.eventName}`,
         PAGE_MARGIN,
         40,
@@ -260,7 +427,7 @@ export async function renderPostMortemPdf({ event, stats, generatedByName, gener
       const generatedLine = generatedByName
         ? `Generated by ${generatedByName} on ${fmtDateTime(generatedAt || new Date())}`
         : `Generated ${fmtDateTime(generatedAt || new Date())}`;
-      doc.font("Helvetica").fontSize(10).fillColor("#e9d8fd").text(
+      doc.font("Body").fontSize(10).fillColor("#e9d8fd").text(
         `${generatedLine}${event.eventVenue ? ` • ${event.eventVenue}` : ""}`,
         PAGE_MARGIN,
         doc.y + 6,
@@ -365,7 +532,7 @@ export async function renderPostMortemPdf({ event, stats, generatedByName, gener
       }
 
       if (awardCards.length === 0) {
-        doc.fontSize(9).font("Helvetica").fillColor(MUTED).text(
+        doc.fontSize(9).font("Body").fillColor(MUTED).text(
           "Not enough activity yet to hand out any awards.",
           PAGE_MARGIN,
           doc.y,
@@ -412,7 +579,7 @@ export async function renderPostMortemPdf({ event, stats, generatedByName, gener
       if (!stats.hasCheckins) {
         ensureSpace(doc, 40);
         doc.roundedRect(PAGE_MARGIN, doc.y, contentWidth, 40, 6).fillAndStroke("#fff7ed", "#fed7aa");
-        doc.fillColor("#c2410c").font("Helvetica-Bold").fontSize(10).text(
+        doc.fillColor("#c2410c").font("Body-Bold").fontSize(10).text(
           "No attendees checked in",
           PAGE_MARGIN,
           doc.y + 14,
@@ -420,7 +587,7 @@ export async function renderPostMortemPdf({ event, stats, generatedByName, gener
         );
         doc.y += 50;
       } else {
-        doc.fontSize(9).font("Helvetica").fillColor(MUTED).text(
+        doc.fontSize(9).font("Body").fillColor(MUTED).text(
           `${stats.checkedInCount} of ${stats.totalAttendees} attendees checked in (${Math.round(
             (stats.checkedInCount / Math.max(stats.totalAttendees, 1)) * 100
           )}%).`,
@@ -439,31 +606,151 @@ export async function renderPostMortemPdf({ event, stats, generatedByName, gener
         });
       }
 
+      // ── Revenue ──
+      sectionTitle(doc, "Revenue");
+      const revCardGap = 12;
+      const revCardWidth = (contentWidth - revCardGap * 2) / 3;
+      const revCardY = doc.y;
+      drawStatCard(doc, { x: PAGE_MARGIN, y: revCardY, width: revCardWidth, label: "Gross Sales", value: money(stats.revenue.totalGross) });
+      drawStatCard(doc, {
+        x: PAGE_MARGIN + revCardWidth + revCardGap,
+        y: revCardY,
+        width: revCardWidth,
+        label: "Transaction Fees",
+        value: money(stats.revenue.totalTransactionFees),
+        accent: "#d97706",
+      });
+      drawStatCard(doc, {
+        x: PAGE_MARGIN + (revCardWidth + revCardGap) * 2,
+        y: revCardY,
+        width: revCardWidth,
+        label: "Net Ticket Value",
+        value: money(stats.revenue.totalTicketValue),
+        accent: "#16a34a",
+      });
+      doc.y = revCardY + 54 + 10;
+
+      // ── Referrals & discounts ──
+      sectionTitle(doc, "Referrals & Discounts");
+      const acqCardGap = 12;
+      const acqCardWidth = (contentWidth - acqCardGap * 2) / 3;
+      const acqCardY = doc.y;
+      drawStatCard(doc, {
+        x: PAGE_MARGIN,
+        y: acqCardY,
+        width: acqCardWidth,
+        label: "Used a Discount",
+        value: `${stats.acquisition.discountCount} (${stats.acquisition.discountPct}%)`,
+      });
+      drawStatCard(doc, {
+        x: PAGE_MARGIN + acqCardWidth + acqCardGap,
+        y: acqCardY,
+        width: acqCardWidth,
+        label: "Came via Referral",
+        value: `${stats.acquisition.referralCount} (${stats.acquisition.referralPct}%)`,
+        accent: "#0ea5e9",
+      });
+      drawStatCard(doc, {
+        x: PAGE_MARGIN + (acqCardWidth + acqCardGap) * 2,
+        y: acqCardY,
+        width: acqCardWidth,
+        label: "Organic (Neither)",
+        value: `${stats.acquisition.organicCount} (${stats.acquisition.organicPct}%)`,
+        accent: "#64748b",
+      });
+      doc.y = acqCardY + 54 + 14;
+
+      if (stats.acquisition.topDiscountCodes.length > 0) {
+        doc.fontSize(9).font("Body-Bold").fillColor(INK).text("Discount codes used:", PAGE_MARGIN, doc.y, { width: contentWidth });
+        doc.moveDown(0.3);
+        stats.acquisition.topDiscountCodes.forEach((d) => {
+          doc.fontSize(8.5).font("Body").fillColor(MUTED).text(`${d.code} — ${d.count} ticket${d.count === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
+            width: contentWidth,
+          });
+        });
+        doc.moveDown(0.6);
+      }
+
+      if (stats.acquisition.topReferrers.length > 0) {
+        doc.fontSize(9).font("Body-Bold").fillColor(INK).text("Top referrers:", PAGE_MARGIN, doc.y, { width: contentWidth });
+        doc.moveDown(0.3);
+        stats.acquisition.topReferrers.forEach((r) => {
+          doc.fontSize(8.5).font("Body").fillColor(MUTED).text(`${r.label} — ${r.count} ticket${r.count === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
+            width: contentWidth,
+          });
+        });
+        doc.moveDown(0.6);
+      }
+
+      // ── Survey responses (only if the organizer set up a form) ──
+      if (surveyStats.length > 0) {
+        sectionTitle(doc, "Survey Responses");
+        surveyStats.forEach((q) => {
+          ensureSpace(doc, 30);
+          doc.fontSize(11).font("Body-Bold").fillColor(INK).text(q.questionText, PAGE_MARGIN, doc.y, { width: contentWidth });
+          doc.fontSize(7.5).font("Body").fillColor(MUTED).text(`${q.answeredCount} response${q.answeredCount === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
+            width: contentWidth,
+          });
+          doc.moveDown(0.4);
+
+          if (q.kind === "single-choice") {
+            drawPieChart(doc, { segments: q.segments });
+          } else if (q.kind === "multi-choice") {
+            drawChoiceBreakdown(doc, { segments: q.segments });
+            doc.moveDown(0.4);
+          } else if (q.entries.length === 0) {
+            doc.fontSize(9).font("Body").fillColor(MUTED).text("No responses yet", PAGE_MARGIN, doc.y, { width: contentWidth });
+            doc.moveDown(0.6);
+          } else {
+            q.entries.forEach((entry) => {
+              ensureSpace(doc, 14);
+              doc.fontSize(8.5).font("Body-Bold").fillColor(INK);
+              doc.text(truncate(doc, entry.fullName, 150), PAGE_MARGIN, doc.y, { continued: true, lineBreak: false });
+              doc.font("Body").fillColor(MUTED).text(`  —  ${entry.answer}`, { width: contentWidth - 150 });
+            });
+            doc.moveDown(0.5);
+          }
+        });
+      }
+
       // ── Full attendee timeline ──
       sectionTitle(doc, "Complete Attendee Timeline");
       renderTable(doc, {
-        headers: ["Reference", "Name", "Email", "Ticket Type", "Purchased", "Checked In"],
-        colWidths: colWidthsFromRatios(contentWidth, [0.14, 0.18, 0.28, 0.13, 0.17, 0.1]),
+        headers: ["Reference", "Name", "Email", "Ticket Type", "Purchased", "Ticket Value", "Checked In"],
+        colWidths: colWidthsFromRatios(contentWidth, [0.14, 0.15, 0.24, 0.11, 0.15, 0.11, 0.1]),
         rows: stats.fullTimelineForTable.map((a) => [
           a.ticketReference,
           a.fullName,
           a.email,
           a.ticketType,
           a.purchaseDate ? fmtDateTime(a.purchaseDate) : "Unknown",
+          typeof a.ticketValue === "number" ? money(a.ticketValue) : "—",
           a.verified ? "Yes" : "No",
         ]),
       });
 
       // ── Footer page numbers ──
+      // Deliberately drawn at page.height - 30, inside the bottom margin
+      // (margins.bottom is 50, so maxY = height - 50 — this y is below
+      // that on purpose, in the margin whitespace). Passing `width` here
+      // used to route it through LineWrapper, whose very first check is
+      // "does document.y already exceed maxY?" — it does, by design, so
+      // every single footer stamp was silently triggering
+      // continueOnNewPage() and appending a brand-new blank page at the
+      // *end* of the document instead of stamping the page it was
+      // switched to. That's what was doubling the real page count (a
+      // content page bleeding "of 6" onto what a reader sees as 12
+      // pages) — this was happening on top of, and independently of, the
+      // reference-truncation bug above. No `width` here for the same
+      // reason as truncate()'s other call sites: manually measure and
+      // center instead, so this never goes through LineWrapper at all.
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
-        doc.fontSize(7.5).fillColor(MUTED).font("Helvetica").text(
-          `Spotix • Attendee Post Mortem • Page ${i - range.start + 1} of ${range.count}`,
-          PAGE_MARGIN,
-          doc.page.height - 30,
-          { width: contentWidth, align: "center" }
-        );
+        const footerText = `Spotix • Attendee Post Mortem • Page ${i - range.start + 1} of ${range.count}`;
+        doc.fontSize(7.5).fillColor(MUTED).font("Body");
+        const footerWidth = doc.widthOfString(footerText);
+        doc.text(footerText, PAGE_MARGIN + (contentWidth - footerWidth) / 2, doc.page.height - 30, { lineBreak: false });
       }
 
       doc.end();

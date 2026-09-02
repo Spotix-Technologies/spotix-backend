@@ -1,8 +1,16 @@
 import { MailerSend } from "mailersend"
 import dotenv from "dotenv"
+import { buildTicketConfirmationEmailHtml } from "./lib/mail/ticket-confirmation-template.js"
 
 // Load environment variables
 dotenv.config()
+
+// Base URL the QR <img> tags in the ticket confirmation email point at —
+// v1/qrcode.js is registered under this same backend, so it defaults to
+// BACKEND_URL. Set QR_BASE_URL explicitly if QR images should be served
+// from a different host (e.g. a CDN in front of this API).
+const QR_BASE_URL =
+  process.env.QR_BASE_URL || `${process.env.BACKEND_URL || "http://localhost:2000"}/v1/qrcode`
 
 // Initialize MailerSend with API key
 const mailersend = new MailerSend({
@@ -70,13 +78,18 @@ export default async function sendMailRoutes(fastify, options) {
   })
 
   // Route for payment confirmation emails
-// Route for payment confirmation emails
-fastify.post("/payment-confirmation", async (request, reply) => {
+  //
+  // Sends via raw `html` (built by buildTicketConfirmationEmailHtml) instead
+  // of MailerSend's hosted template_id — that's what lets us render one
+  // QR code per ticket, which a hosted template can't loop to do. See
+  // v1/lib/mail/ticket-confirmation-template.js for the full rationale.
+  fastify.post("/payment-confirmation", async (request, reply) => {
   try {
     const {
       email,
       name,
-      ticket_IDs,        
+      ticket_IDs,        // legacy: comma-joined string, still accepted as a fallback
+      tickets,            // preferred: [{ ticketId, ticketType }, ...], one per physical ticket
       ticket_references, 
       event_host,
       event_name,
@@ -92,8 +105,6 @@ fastify.post("/payment-confirmation", async (request, reply) => {
 const requiredFields = {
       email,
       name,
-      ticket_IDs,        
-      ticket_references, 
       event_host,
       event_name,
       payment_ref,
@@ -108,6 +119,11 @@ const missingFields = Object.entries(requiredFields)
   .filter(([_, value]) => !value)
   .map(([key]) => key);
 
+// tickets/ticket_IDs is validated separately since either form is acceptable
+if (!Array.isArray(tickets) && !ticket_IDs) {
+  missingFields.push("tickets");
+}
+
 if (missingFields.length > 0) {
   fastify.log.warn(`[payment-confirmation] Missing required fields: ${missingFields.join(", ")}`);
   return reply.code(400).send({
@@ -115,6 +131,33 @@ if (missingFields.length > 0) {
     message: "Missing required fields for payment confirmation email",
   });
 }
+
+    // Normalize to the [{ ticketId, ticketType }] shape the template expects.
+    // Preferred path: caller sends `tickets` directly (see confirmation-email.js
+    // and ticket-agent.js). Fallback: split the legacy comma-joined ticket_IDs
+    // string and pair each with the overall ticket_types summary — used only
+    // if an older caller hasn't been updated to send `tickets` yet.
+    const normalizedTickets = Array.isArray(tickets) && tickets.length > 0
+      ? tickets.map((t) => ({ ticketId: t.ticketId ?? t.id, ticketType: t.ticketType ?? t.type }))
+      : String(ticket_IDs)
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+          .map((ticketId) => ({ ticketId, ticketType: ticket_types || "Standard" }));
+
+    const emailHtml = buildTicketConfirmationEmailHtml({
+      name,
+      eventName: event_name,
+      eventHost: event_host || "Spotix Event Host",
+      paymentRef: ticket_references || payment_ref,
+      ticketTypesSummary: ticket_types || "Standard",
+      totalAmount: total_amount || "0.00",
+      ticketCount: ticket_count || normalizedTickets.length || 1,
+      paymentMethod: payment_method,
+      bookerEmail: booker_email || "support@spotix.com.ng",
+      tickets: normalizedTickets,
+      qrBaseUrl: QR_BASE_URL,
+    })
 
     const emailParams = {
       from: {
@@ -128,25 +171,7 @@ if (missingFields.length > 0) {
         },
       ],
       subject: `Your Ticket for ${event_name}`,
-      template_id: "3zxk54vv5op4jy6v",
-      personalization: [
-        {
-          email: email,
-          data: {
-            name: name,
-            ticket_IDs: ticket_IDs,
-            ticket_references: ticket_references || payment_ref,
-            event_host: event_host || "Spotix Event Host",
-            event_name: event_name,
-            payment_ref: payment_ref,
-            ticket_types: ticket_types || "Standard",
-            booker_email: booker_email || "support@spotix.com.ng",
-            total_amount: total_amount || "0.00",
-            ticket_count: ticket_count || 1,
-            payment_method: payment_method,
-          },
-        },
-      ],
+      html: emailHtml,
     }
 
     await mailersend.email.send(emailParams)

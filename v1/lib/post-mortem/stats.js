@@ -88,6 +88,43 @@ export function computeStats(rawAttendees) {
     }
   });
 
+  // ── Referrals & discounts ──
+  const withDiscount = rawAttendees.filter((a) => a.discountApplied && a.discountCode);
+  const withReferral = rawAttendees.filter((a) => !!a.referralCode);
+  const organic = rawAttendees.filter((a) => !(a.discountApplied && a.discountCode) && !a.referralCode);
+
+  const discountCodeCounts = new Map();
+  withDiscount.forEach((a) => {
+    discountCodeCounts.set(a.discountCode, (discountCodeCounts.get(a.discountCode) || 0) + 1);
+  });
+  const referralCodeCounts = new Map();
+  withReferral.forEach((a) => {
+    const label = a.referralName ? `${a.referralName} (${a.referralCode})` : a.referralCode;
+    referralCodeCounts.set(label, (referralCodeCounts.get(label) || 0) + 1);
+  });
+
+  const total = rawAttendees.length || 1; // guard div-by-zero for percentages
+  const acquisition = {
+    discountCount: withDiscount.length,
+    discountPct: Math.round((withDiscount.length / total) * 100),
+    referralCount: withReferral.length,
+    referralPct: Math.round((withReferral.length / total) * 100),
+    organicCount: organic.length,
+    organicPct: Math.round((organic.length / total) * 100),
+    topDiscountCodes: [...discountCodeCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([code, count]) => ({ code, count })),
+    topReferrers: [...referralCodeCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, count]) => ({ label, count })),
+  };
+
+  // ── Ticket value (revenue net of transaction fees) ──
+  const withTicketValue = rawAttendees.filter((a) => typeof a.ticketValue === "number");
+  const totalTicketValue = withTicketValue.reduce((sum, a) => sum + a.ticketValue, 0);
+  const totalTransactionFees = rawAttendees.reduce((sum, a) => sum + (a.transactionFee || 0), 0);
+  const totalGross = rawAttendees.reduce((sum, a) => sum + (a.totalAmount || 0), 0);
+
   return {
     totalAttendees: rawAttendees.length,
     checkedInCount: checkedIn.length,
@@ -110,5 +147,82 @@ export function computeStats(rawAttendees) {
 
     hoarder,
     nightOwl,
+
+    acquisition,
+    revenue: {
+      totalGross,
+      totalTransactionFees,
+      totalTicketValue,
+    },
   };
+}
+
+/** Aggregates raw survey responses against the organizer's question set
+ *  for the PDF's survey section. Pure function — no I/O.
+ *
+ *  - radio: single-choice — tally counts per option for a pie chart, plus
+ *    a text key ("Item A: 62%, Item B: 38%").
+ *  - checkbox: multi-choice — respondents can pick more than one option,
+ *    so percentages are of respondents (not of total picks) and can sum
+ *    past 100%; represented as a horizontal bar per option, matching the
+ *    existing bar-chart treatment used elsewhere in this PDF.
+ *  - anything else (short/long/number/phone/date/time/datetime): no
+ *    meaningful aggregation — every individual answer is listed verbatim
+ *    against the attendee who gave it. */
+export function computeSurveyStats(questions, responses) {
+  if (!Array.isArray(questions) || questions.length === 0) return [];
+
+  return questions.map((q) => {
+    const answered = responses.filter((r) => {
+      const v = r.responses?.[q.id];
+      return v !== undefined && v !== null && v !== "";
+    });
+
+    if (q.questionType === "radio") {
+      const counts = new Map(q.options.map((o) => [o, 0]));
+      let otherCount = 0;
+      answered.forEach((r) => {
+        const v = r.responses[q.id];
+        if (counts.has(v)) counts.set(v, counts.get(v) + 1);
+        else otherCount += 1;
+      });
+      if (otherCount > 0) counts.set("Other", otherCount);
+      const totalAnswered = answered.length || 1;
+      const segments = [...counts.entries()].map(([label, count]) => ({
+        label,
+        count,
+        pct: Math.round((count / totalAnswered) * 100),
+      }));
+      return { ...q, kind: "single-choice", segments, answeredCount: answered.length };
+    }
+
+    if (q.questionType === "checkbox") {
+      const counts = new Map(q.options.map((o) => [o, 0]));
+      let otherCount = 0;
+      answered.forEach((r) => {
+        const v = r.responses[q.id];
+        const picks = Array.isArray(v) ? v : [v];
+        picks.forEach((p) => {
+          if (counts.has(p)) counts.set(p, counts.get(p) + 1);
+          else otherCount += 1;
+        });
+      });
+      if (otherCount > 0) counts.set("Other", otherCount);
+      const totalAnswered = answered.length || 1;
+      const segments = [...counts.entries()].map(([label, count]) => ({
+        label,
+        count,
+        pct: Math.round((count / totalAnswered) * 100),
+      }));
+      return { ...q, kind: "multi-choice", segments, answeredCount: answered.length };
+    }
+
+    // free text (short/long/number/phone/date/time/datetime)
+    const entries = answered.map((r) => ({
+      fullName: r.attendeeInfo.fullName,
+      email: r.attendeeInfo.email,
+      answer: Array.isArray(r.responses[q.id]) ? r.responses[q.id].join(", ") : String(r.responses[q.id]),
+    }));
+    return { ...q, kind: "text", entries, answeredCount: answered.length };
+  });
 }

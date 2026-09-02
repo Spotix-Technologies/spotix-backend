@@ -431,10 +431,16 @@ export async function generateAgentTickets(fastify, reference) {
     const ticketTypeSummary = ticketTypesArray
       .map((item) => `${item.type}${Number(item.quantity) > 1 ? ` x${item.quantity}` : ""}`)
       .join(", ");
+    // createdTicketIds and ticketSeats share the same seat-order loop above,
+    // so index i is the same physical ticket in both arrays.
+    const tickets = createdTicketIds.map((ticketId, i) => ({
+      ticketId,
+      ticketType: ticketSeats?.[i]?.type || "Standard",
+    }));
     const emailPayload = {
       email: buyerEmail,
       name: buyerFullName || "Valued Customer",
-      ticket_IDs: createdTicketIds.join(", "),
+      tickets,
       ticket_references: reference,
       event_host: paymentData.bookerName || "Event Host",
       event_name: paymentData.eventName,

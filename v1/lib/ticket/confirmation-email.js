@@ -6,17 +6,24 @@
 
 export async function sendConfirmationEmail(
   fastify,
-  { paymentData, reference, createdTicketIds, totalTicketCount, ticketTypesArray, buyerFullName, buyerEmail }
+  { paymentData, reference, createdTicketIds, totalTicketCount, ticketTypesArray, ticketSeats, buyerFullName, buyerEmail }
 ) {
   try {
     const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:2000";
     const ticketTypeSummary = ticketTypesArray
       .map((item) => `${item.type}${Number(item.quantity) > 1 ? ` x${item.quantity}` : ""}`)
       .join(", ");
+    // createdTicketIds and ticketSeats are built from the same seat-order
+    // loop (see write-tickets.js / build-tickets.js), so index i in one is
+    // always the same physical ticket as index i in the other.
+    const tickets = createdTicketIds.map((ticketId, i) => ({
+      ticketId,
+      ticketType: ticketSeats?.[i]?.type || "Standard",
+    }));
     const emailPayload = {
       email: buyerEmail,
       name: buyerFullName || "Valued Customer",
-      ticket_IDs: createdTicketIds.join(", "),
+      tickets,
       ticket_references: reference,
       event_host: paymentData.bookerName || "Event Host",
       event_name: paymentData.eventName,
