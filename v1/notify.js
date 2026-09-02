@@ -25,6 +25,8 @@
  *   /v1/notify/vote-purchase-confirmation  ← new: vote purchase receipt email
  *   /v1/notify/election-form-confirmation  ← new: election candidate form receipt email
  *   /v1/notify/election-form-pay-later     ← new: election form "pay later" reminder email
+ *   /v1/notify/booker-verification-approved ← new: BVT issued after admin approves a booker's documents
+ *   /v1/notify/booker-verification-rejected ← new: single-document rejection, with problem + suggestion
  */
 
 import teamMemberAddedRoute from "./mail-routes/team-member-added.js"
@@ -39,6 +41,8 @@ import vaultNotifyRoute from "./mail-routes/vault-notify.js"
 import votePurchaseConfirmationRoute from "./mail-routes/vote-purchase-confirmation.js"
 import electionFormConfirmationRoute from "./mail-routes/election-form-confirmation.js"
 import electionFormPayLaterRoute from "./mail-routes/election-form-pay-later.js"
+import bookerVerificationApprovedRoute from "./mail-routes/booker-verification-approved.js"
+import bookerVerificationRejectedRoute from "./mail-routes/booker-verification-rejected.js"
 
 export default async function notifyRoutes(fastify, options) {
   await fastify.register(teamMemberAddedRoute)
@@ -53,4 +57,6 @@ export default async function notifyRoutes(fastify, options) {
   await fastify.register(votePurchaseConfirmationRoute)
   await fastify.register(electionFormConfirmationRoute)
   await fastify.register(electionFormPayLaterRoute)
+  await fastify.register(bookerVerificationApprovedRoute)
+  await fastify.register(bookerVerificationRejectedRoute)
 }
