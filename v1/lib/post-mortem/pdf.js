@@ -624,10 +624,14 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
       });
       doc.y = revCardY + 54 + 10;
 
-      // ── Referrals & discounts ──
-      sectionTitle(doc, "Referrals & Discounts");
-      const acqCardGap = 12;
-      const acqCardWidth = (contentWidth - acqCardGap * 2) / 3;
+      // ── Discounts ──
+      // Independent yes/no split: % of all attendees who used a discount
+      // code vs. % who didn't. Not mixed with referral usage — an
+      // attendee can be counted in both this section and the Referrals
+      // section below.
+      sectionTitle(doc, "Discounts");
+      const discCardGap = 12;
+      const discCardWidth = (contentWidth - discCardGap) / 2;
       // Without this, drawStatCard()'s absolute-positioned .text() calls
       // can land close enough to the page bottom that pdfkit silently
       // starts a new page mid-card (see continueOnNewPage() note up top) —
@@ -636,36 +640,28 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
       // Reserving the row's full height up front forces the whole row
       // onto a single page.
       ensureSpace(doc, 54 + 14);
-      const acqCardY = doc.y;
+      const discCardY = doc.y;
       drawStatCard(doc, {
         x: PAGE_MARGIN,
-        y: acqCardY,
-        width: acqCardWidth,
+        y: discCardY,
+        width: discCardWidth,
         label: "Used a Discount",
-        value: `${stats.acquisition.discountCount} (${stats.acquisition.discountPct}%)`,
+        value: `${stats.discount.usedCount} (${stats.discount.usedPct}%)`,
       });
       drawStatCard(doc, {
-        x: PAGE_MARGIN + acqCardWidth + acqCardGap,
-        y: acqCardY,
-        width: acqCardWidth,
-        label: "Came via Referral",
-        value: `${stats.acquisition.referralCount} (${stats.acquisition.referralPct}%)`,
-        accent: "#0ea5e9",
-      });
-      drawStatCard(doc, {
-        x: PAGE_MARGIN + (acqCardWidth + acqCardGap) * 2,
-        y: acqCardY,
-        width: acqCardWidth,
-        label: "Organic (Neither)",
-        value: `${stats.acquisition.organicCount} (${stats.acquisition.organicPct}%)`,
+        x: PAGE_MARGIN + discCardWidth + discCardGap,
+        y: discCardY,
+        width: discCardWidth,
+        label: "No Discount Used",
+        value: `${stats.discount.notUsedCount} (${stats.discount.notUsedPct}%)`,
         accent: "#64748b",
       });
-      doc.y = acqCardY + 54 + 14;
+      doc.y = discCardY + 54 + 14;
 
-      if (stats.acquisition.topDiscountCodes.length > 0) {
+      if (stats.discount.topDiscountCodes.length > 0) {
         doc.fontSize(9).font("Body-Bold").fillColor(INK).text("Discount codes used:", PAGE_MARGIN, doc.y, { width: contentWidth });
         doc.moveDown(0.3);
-        stats.acquisition.topDiscountCodes.forEach((d) => {
+        stats.discount.topDiscountCodes.forEach((d) => {
           ensureSpace(doc, 12);
           doc.fontSize(8.5).font("Body").fillColor(MUTED).text(`${d.code} — ${d.count} ticket${d.count === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
             width: contentWidth,
@@ -674,10 +670,34 @@ export async function renderPostMortemPdf({ event, stats, surveyStats = [], gene
         doc.moveDown(0.6);
       }
 
-      if (stats.acquisition.topReferrers.length > 0) {
+      // ── Referrals ──
+      // Independent yes/no split: % of all attendees who came via a
+      // referral code vs. % who came organically (no referral code).
+      sectionTitle(doc, "Referrals");
+      ensureSpace(doc, 54 + 14);
+      const refCardY = doc.y;
+      drawStatCard(doc, {
+        x: PAGE_MARGIN,
+        y: refCardY,
+        width: discCardWidth,
+        label: "Came via Referral",
+        value: `${stats.referral.referredCount} (${stats.referral.referredPct}%)`,
+        accent: "#0ea5e9",
+      });
+      drawStatCard(doc, {
+        x: PAGE_MARGIN + discCardWidth + discCardGap,
+        y: refCardY,
+        width: discCardWidth,
+        label: "Organic (No Referral)",
+        value: `${stats.referral.organicCount} (${stats.referral.organicPct}%)`,
+        accent: "#64748b",
+      });
+      doc.y = refCardY + 54 + 14;
+
+      if (stats.referral.topReferrers.length > 0) {
         doc.fontSize(9).font("Body-Bold").fillColor(INK).text("Top referrers:", PAGE_MARGIN, doc.y, { width: contentWidth });
         doc.moveDown(0.3);
-        stats.acquisition.topReferrers.forEach((r) => {
+        stats.referral.topReferrers.forEach((r) => {
           ensureSpace(doc, 12);
           doc.fontSize(8.5).font("Body").fillColor(MUTED).text(`${r.label} — ${r.count} ticket${r.count === 1 ? "" : "s"}`, PAGE_MARGIN, doc.y, {
             width: contentWidth,

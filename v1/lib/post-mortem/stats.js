@@ -88,10 +88,17 @@ export function computeStats(rawAttendees, referrals = []) {
     }
   });
 
-  // ── Referrals & discounts ──
+  // ── Discounts & referrals ──
+  // These are two independent yes/no splits of the *same* attendee pool,
+  // not three mutually-exclusive buckets — an attendee can carry a
+  // discount code, a referral code, both, or neither, so "used a
+  // discount" and "came via referral" are computed (and reported)
+  // separately rather than folded into one discount/referral/organic
+  // three-way split.
   const withDiscount = rawAttendees.filter((a) => a.discountApplied && a.discountCode);
+  const withoutDiscount = rawAttendees.filter((a) => !(a.discountApplied && a.discountCode));
   const withReferral = rawAttendees.filter((a) => !!a.referralCode);
-  const organic = rawAttendees.filter((a) => !(a.discountApplied && a.discountCode) && !a.referralCode);
+  const withoutReferral = rawAttendees.filter((a) => !a.referralCode);
 
   const discountCodeCounts = new Map();
   withDiscount.forEach((a) => {
@@ -99,16 +106,22 @@ export function computeStats(rawAttendees, referrals = []) {
   });
 
   const total = rawAttendees.length || 1; // guard div-by-zero for percentages
-  const acquisition = {
-    discountCount: withDiscount.length,
-    discountPct: Math.round((withDiscount.length / total) * 100),
-    referralCount: withReferral.length,
-    referralPct: Math.round((withReferral.length / total) * 100),
-    organicCount: organic.length,
-    organicPct: Math.round((organic.length / total) * 100),
+
+  const discount = {
+    usedCount: withDiscount.length,
+    usedPct: Math.round((withDiscount.length / total) * 100),
+    notUsedCount: withoutDiscount.length,
+    notUsedPct: Math.round((withoutDiscount.length / total) * 100),
     topDiscountCodes: [...discountCodeCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([code, count]) => ({ code, count })),
+  };
+
+  const referral = {
+    referredCount: withReferral.length,
+    referredPct: Math.round((withReferral.length / total) * 100),
+    organicCount: withoutReferral.length,
+    organicPct: Math.round((withoutReferral.length / total) * 100),
     // Sourced from events/{eventId}/referrals/{code}.totalTickets (see
     // data.js#fetchReferralsForPostMortem) — NOT a tally of attendee docs.
     // A referral doc's totalTickets is the correct per-code usage count;
@@ -149,7 +162,8 @@ export function computeStats(rawAttendees, referrals = []) {
     hoarder,
     nightOwl,
 
-    acquisition,
+    discount,
+    referral,
     revenue: {
       totalRevenue,
     },

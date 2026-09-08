@@ -7,6 +7,7 @@
  *   charge.success / charge.failed  (ticket_purchase)
  *   charge.success / charge.failed  (voting_purchase)
  *   charge.success / charge.failed  (election_form_purchase)
+ *   charge.success / charge.failed  (merch_purchase)
  *   transfer.*                       (payout cycle)
  */
 
@@ -18,6 +19,7 @@ import { generateTickets } from "./ticket.js";
 import { generateAgentTickets } from "./ticket-agent.js";
 import { processVotingCharge } from "./voting.js";          
 import { processElectionCharge } from "./election.js";
+import { processMerchCharge } from "./merch.js";
 
 const TRANSFER_EVENTS = new Set([
   "transfer.success",
@@ -34,7 +36,7 @@ export default async function webhookRoute(fastify, options) {
         return reply.code(500).send({ error: "Server configuration error" });
       }
 
-      // ── Signature verification ─────────────────────────────────────────────
+      //  Signature verification 
       const hash = crypto
         .createHmac("sha512", paystackSecret)
         .update(JSON.stringify(request.body))
@@ -48,7 +50,7 @@ export default async function webhookRoute(fastify, options) {
       const { event, data } = request.body;
       fastify.log.info(`[webhook] Received event: ${event}`);
 
-      // ── Charge events ──────────────────────────────────────────────────────
+      //  Charge events ─
       if (event === "charge.success" || event === "charge.failed") {
         const reference = data?.reference;
         if (!reference) {
@@ -60,7 +62,7 @@ export default async function webhookRoute(fastify, options) {
           (f) => f.variable_name === "type"
         )?.value;
 
-        // ── Ticket purchase ────────────────────────────────────────────────
+        //  Ticket purchase ─
         if (transactionType === "ticket_purchase") {
           const paymentStatus = event === "charge.success" ? "successful" : "failed";
 
@@ -138,7 +140,7 @@ export default async function webhookRoute(fastify, options) {
           }
         }
 
-        // ── Voting purchase ────────────────────────────────────────────────
+        //  Voting purchase ─
         if (transactionType === "voting_purchase") {
           try {
             const result = await processVotingCharge(fastify, event, data, reference);
@@ -149,7 +151,7 @@ export default async function webhookRoute(fastify, options) {
           }
         }
 
-        // ── Election candidate form purchase ─────────────────────────────
+        //  Election candidate form purchase ─
         // Set by spotix-vote's lib/election/paystack/election-checkout.ts
         // (metadata.custom_fields "type" = "election_form_purchase") when
         // a candidate pays a paid office's form fee. Free offices never
@@ -165,12 +167,26 @@ export default async function webhookRoute(fastify, options) {
           }
         }
 
-        // ── Unknown charge type ────────────────────────────────────────────
+        //  Merch purchase ─
+        // Set by spotix-user's create-merch-ref route
+        // (metadata.custom_fields "type" = "merch_purchase") — see
+        // components/lib/merch-payment-utility.ts on the client side.
+        if (transactionType === "merch_purchase") {
+          try {
+            const result = await processMerchCharge(fastify, event, data, reference);
+            return reply.code(200).send({ success: true, ...result });
+          } catch (err) {
+            fastify.log.error("[webhook] processMerchCharge error:", err);
+            return reply.code(500).send({ error: "Merch order processing failed" });
+          }
+        }
+
+        //  Unknown charge type 
         fastify.log.info(`[webhook] Skipping unrecognised charge type: ${transactionType}`);
         return reply.code(200).send({ success: true, message: "Charge type not handled" });
       }
 
-      // ── Transfer events (payout cycle) ────────────────────────────────────
+      //  Transfer events (payout cycle) 
       if (TRANSFER_EVENTS.has(event)) {
         try {
           // admin_transfers (Transfers menu, "SPTX-XFER-...") and payouts
@@ -189,7 +205,7 @@ export default async function webhookRoute(fastify, options) {
         }
       }
 
-      // ── Unhandled events ───────────────────────────────────────────────────
+      //  Unhandled events 
       fastify.log.info(`[webhook] Unhandled event: ${event}`);
       return reply.code(200).send({ success: true, message: "Event received but not processed" });
 
