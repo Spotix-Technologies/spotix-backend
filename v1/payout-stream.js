@@ -48,8 +48,12 @@ function shapePayout(row) {
     status: row.status,
     isEvent: row.is_event,
     isPoll: row.is_poll,
+    isElection: row.is_election ?? false,
+    isMerch: row.is_merch ?? false,
     eventName: row.event_name ?? null,
     pollName: row.poll_name ?? null,
+    electionName: row.election_name ?? null,
+    merchName: row.merch_name ?? null,
     payDate: row.pay_date,
     amount: row.amount,
     narration: row.narration ?? null,
@@ -136,7 +140,7 @@ export default async function payoutStreamRoute(fastify, options) {
 
     request.raw.on("close", cleanup);
 
-    // ── Initial snapshot ─────────────────────────────────────────────────
+    //  Initial snapshot 
     let initial;
     try {
       const { data, error } = await supabaseAdmin
@@ -167,7 +171,7 @@ export default async function payoutStreamRoute(fastify, options) {
       return;
     }
 
-    // ── Live updates (fast path) ────────────────────────────────────────
+    //  Live updates (fast path) 
     channel = supabaseAdmin
       .channel(`payout-stream-${reference}`)
       .on(
@@ -184,7 +188,7 @@ export default async function payoutStreamRoute(fastify, options) {
         }
       });
 
-    // ── Poll fallback (guaranteed path) ─────────────────────────────────
+    //  Poll fallback (guaranteed path) 
     // Covers the case where realtime is misconfigured (table never added
     // to the supabase_realtime publication) or the channel silently
     // stalls without an error event. Worst-case delay to the browser is

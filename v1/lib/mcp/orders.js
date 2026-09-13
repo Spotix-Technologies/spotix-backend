@@ -64,7 +64,7 @@ export async function createOrder(fastify, input) {
 
   if (event.suspended) throw new OrderError("This event is currently unavailable", 403);
 
-  // ── Virtual queue gate ────────────────────────────────────────────────
+  //  Virtual queue gate 
   // High-traffic events opt into a virtual queue (see v1/queue.js) that
   // only a real browser session on spotix.com.ng can join and hold a
   // checkout slot in. An AI chat model has no way to hold that slot, so
@@ -178,7 +178,7 @@ export async function createOrder(fastify, input) {
 
   await adminDb.collection("Reference").doc(reference).set(paymentReference);
 
-  // ── Hand back the Spotix-hosted MCP payment page, not a Paystack link ──
+  //  Hand back the Spotix-hosted MCP payment page, not a Paystack link 
   // Same NEXT_PUBLIC_SPOTIX_URL spotix-mcp's own config.ts falls back to,
   // so this and the mcp server agree on the same default even if only one
   // of the two services has the var set.

@@ -21,6 +21,7 @@ import { adminDb } from "./firebase-admin.js"
 import { FieldValue } from "firebase-admin/firestore"
 import { supabaseAdmin } from "./lib/supabase-admin.js"
 import { notifyPayoutStatus } from "./lib/notify-payout.js"
+import { recordProductPayout } from "./lib/payout/products/index.js"
 
 const TERMINAL_STATUSES = {
   "transfer.success":  "successful",
@@ -118,7 +119,7 @@ export async function processTransferEvents(fastify, events) {
     // ── Analytics — successful only ─────────────────────────────────────────
     if (newStatus !== "successful") continue
 
-    const { user_id: userId, amount, is_poll: isPollPayout, event_id: eventId, poll_id: pollId } = payoutRow
+    const { user_id: userId, amount } = payoutRow
 
     if (!userId || !amount) {
       fastify.log.warn(`[payout] Skipping analytics for ${reference} — missing userId or amount`)
@@ -145,23 +146,26 @@ export async function processTransferEvents(fastify, events) {
       totalPaidOut: FieldValue.increment(amount),
     })
 
-    if (isPollPayout) {
-      if (pollId) {
-        batch.update(adminDb.collection("voting").doc(pollId), {
-          totalPaidOut: FieldValue.increment(amount),
-        })
-      }
-    } else if (eventId) {
-      batch.update(adminDb.collection("events").doc(eventId), {
-        totalPaidOut: FieldValue.increment(amount),
-      })
+    // 3. Product-specific totalPaidOut (event/poll → Firestore, enqueued
+    // onto this same batch; election/merch → Supabase RPC, awaited
+    // independently since they don't live in Firestore). See
+    // lib/payout/products/index.js for the dispatch.
+    try {
+      await recordProductPayout(fastify, { adminDb, supabaseAdmin, batch, row: payoutRow })
+    } catch (err) {
+      fastify.log.error({ err }, `[payout] Product-analytics dispatch failed for ${reference}`)
     }
 
     try {
       await batch.commit()
-      fastify.log.info(
-        `[payout] Analytics committed for ${reference} (${isPollPayout ? "poll" : "event"}) — ₦${amount}`
-      )
+      const productLabel = payoutRow.is_poll
+        ? "poll"
+        : payoutRow.is_election
+          ? "election"
+          : payoutRow.is_merch
+            ? "merch"
+            : "event"
+      fastify.log.info(`[payout] Analytics committed for ${reference} (${productLabel}) — ₦${amount}`)
     } catch (err) {
       fastify.log.error({ err }, `[payout] Analytics batch failed for ${reference}`)
     }

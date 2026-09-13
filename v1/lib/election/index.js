@@ -125,10 +125,17 @@ export async function processElectionCharge(fastify, event, data, reference) {
     // existed" branch — that means an earlier reference already counted
     // this office/email pair, so counting it again here would double it) ──
     if (!result.alreadyExisted) {
+      // netAmount (formFee minus Paystack's fee, when the organizer is
+      // the one bearing it — see spotix-vote's lib/election/fees.ts and
+      // the admin-configurable Paystack-fee-payer setting) is what's
+      // actually payable to the office. Falls back to the raw formFee
+      // for references created before this field existed, or when the
+      // candidate/nobody bears the Paystack fee (netAmount === formFee
+      // in both of those cases anyway).
       await updateDailyElectionForms(fastify, adminDb, {
         electionId: activeRefData.electionId,
         electionName: activeRefData.electionName ?? "",
-        netAmount: Number(activeRefData.formFee ?? 0),
+        netAmount: Number(activeRefData.netAmount ?? activeRefData.formFee ?? 0),
         reference,
       });
     }
