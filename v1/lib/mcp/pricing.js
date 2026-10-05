@@ -7,7 +7,7 @@
 // AI chat model is never out of step with what create_ticket_order will
 // actually charge a moment later.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { resolvePlatformFeeRates, resolveFeeBurden, calculateVATFee, computeOrderPricing } from "./pricing-math.js";
 import { getTicketSaleStatus, describeSaleStatus } from "./sale-window.js";
 

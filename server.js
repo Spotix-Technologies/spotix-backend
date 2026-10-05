@@ -3,38 +3,64 @@ The backend is developed and maintained by Drexx Codes and the Spotix Team
 2025 - till date
 */
 
+// Must be the very first import. ESM evaluates imports top-to-bottom
+// before any of this file's own code runs — so if dotenv.config() were
+// called later (as a plain statement, like it used to be, several lines
+// below every route import), every route module imported above it would
+// already have run its own top-level code — including
+// v1/utils/redis-client.js's `new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, ... })`
+// — with process.env still empty. That's the exact "Redis client was
+// initialized without url or token" symptom: the .env values are fine,
+// they just weren't loaded yet when that module evaluated.
+import "dotenv/config";
+
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import { fileURLToPath } from "url";
 import path, { dirname } from "path";
 import fs from "fs";
-import dotenv from "dotenv";
+
+// Global rate limiting — was previously only opt-in per-route (see
+// v1/middleware/rate-limit.js), never actually applied anywhere, so
+// nothing was really being limited backend-wide.
+import { checkRateLimit, getClientIp } from "./v1/middleware/rate-limit.js";
 
 // Routes
-import paymentRoute from "./v1/payment.js";
-import verifyRoute from "./v1/verify.js";
-import sendMailRoutes from "./v1/mail.js";
-import notifyRoutes from "./v1/notify.js";
-import webhookRoute from "./v1/webhook.js";
-import verifyPaymentRoute from "./v1/verify-payment.js";
-import ticketRoute from "./v1/ticket.js";
-import generateAgentTickets from "./v1/ticket-agent.js";
-import freeTicketRoute from "./v1/ticket2.js";
-import payoutProcessRoute from "./v1/payout-process.js";
-import payoutStreamRoute from "./v1/payout-stream.js";
-import cronForecastRoute from "./v1/cron/forecast.js";
-import dicebearRoute  from "./v1/dicebear.js";
-import qrCodeRoute from "./v1/qrcode.js";
-import customerRoute from "./v1/customer.js";
-import adminTransferRoute from "./v1/admin-transfer.js";
-import queueRoute from "./v1/queue.js";
-import postMortemRoute from "./v1/post-mortem.js";
-import mcpRoutes from "./v1/mcp.js";
+import paymentRoute from "./v1/routes/payment.js";
+import verifyRoute from "./v1/routes/verify.js";
+import sendMailRoutes from "./v1/routes/mail.js";
+import notifyRoutes from "./v1/routes/notify.js";
+import webhookRoute from "./v1/routes/webhook.js";
+import verifyPaymentRoute from "./v1/routes/verify-payment.js";
+import ticketRoute from "./v1/routes/ticket.js";
+import generateAgentTickets from "./v1/routes/ticket-agent.js";
+import freeTicketRoute from "./v1/routes/ticket2.js";
+import payoutProcessRoute from "./v1/routes/payout-process.js";
+import payoutStreamRoute from "./v1/routes/payout-stream.js";
+import cronForecastRoute from "./v1/routes/cron/forecast.js";
+import cronProcessCampaignsRoute from "./v1/routes/cron/process-campaigns.js";
+import resendWebhookRoute from "./v1/routes/webhooks/resend.js";
+import sesWebhookRoute from "./v1/routes/webhooks/ses.js";
+import unsubscribeRoute from "./v1/routes/unsubscribe.js";
+import dicebearRoute  from "./v1/routes/dicebear.js";
+import qrCodeRoute from "./v1/routes/qrcode.js";
+import customerRoute from "./v1/routes/customer.js";
+import adminTransferRoute from "./v1/routes/admin-transfer.js";
+import queueRoute from "./v1/routes/queue.js";
+import postMortemRoute from "./v1/routes/post-mortem.js";
+import mcpRoutes from "./v1/routes/mcp.js";
+import mcpOAuthRoutes from "./v1/routes/mcp-oauth.js";
+import mcpOAuthMetadataRoutes from "./v1/routes/mcp-oauth-metadata.js";
+import mcpBookerRoutes from "./v1/routes/mcp-booker.js";
+import campaignsRoute from "./v1/routes/campaigns.js";
+import adminCampaignsRoute from "./v1/routes/admin-campaigns.js";
+import smsCampaignsRoute from "./v1/routes/sms-campaigns.js";
+import adminSmsRoute from "./v1/routes/admin-sms.js";
+// v1/routes/cron/payout.js and v1/routes/gemini-enhance.js exist but were
+// never registered below in the original codebase either — not imported
+// here on purpose, see the notes in their controllers if you want them live.
 
-
-// Load env
-dotenv.config();
 
 // __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -87,6 +113,45 @@ await fastify.register(fastifyCors, {
 
 /* ---------------------------------------------------- */
 
+/* -------------------- GLOBAL RATE LIMIT -------------------- */
+// Applies to every route on this backend, by client IP. Fixed-window
+// counter on the same shared Upstash Redis instance the per-route MCP
+// limiter already uses (v1/middleware/rate-limit.js) — fails OPEN on a
+// Redis hiccup, same as everywhere else that calls checkRateLimit, so a
+// Redis outage degrades to "no rate limiting" rather than "no API".
+//
+// Defaults are generous on purpose (this sits in front of everything,
+// including polling dashboards) — tune via env if a specific window/
+// limit is needed. Health checks and CORS preflight are excluded.
+const GLOBAL_RATE_LIMIT_WINDOW_SECONDS = Number(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60;
+const GLOBAL_RATE_LIMIT_MAX_REQUESTS = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 300;
+
+fastify.addHook("onRequest", async (request, reply) => {
+  if (request.method === "OPTIONS") return;
+  if (request.url === "/favicon.ico" || request.url === "/v1/test") return;
+
+  const ip = getClientIp(request);
+  const { allowed, remaining } = await checkRateLimit(
+    "global",
+    ip,
+    GLOBAL_RATE_LIMIT_WINDOW_SECONDS,
+    GLOBAL_RATE_LIMIT_MAX_REQUESTS
+  );
+
+  reply.header("X-RateLimit-Limit", GLOBAL_RATE_LIMIT_MAX_REQUESTS);
+  reply.header("X-RateLimit-Remaining", remaining);
+
+  if (!allowed) {
+    reply.header("Retry-After", GLOBAL_RATE_LIMIT_WINDOW_SECONDS);
+    return reply.code(429).send({
+      success: false,
+      error: "rate_limited",
+      message: "Too many requests — please try again shortly.",
+    });
+  }
+});
+/* -------------------------------------------------------------- */
+
 // Prevent favicon noise
 fastify.get("/favicon.ico", (_, reply) => {
   reply.code(204).send();
@@ -110,13 +175,29 @@ fastify.register(freeTicketRoute, { prefix: "/v1" });
 fastify.register(payoutProcessRoute, { prefix: "/v1" });
 fastify.register(payoutStreamRoute, { prefix: "/v1" });
 fastify.register(cronForecastRoute, { prefix: "/v1" });
+fastify.register(cronProcessCampaignsRoute, { prefix: "/v1" });
+fastify.register(resendWebhookRoute, { prefix: "/v1" });
+fastify.register(sesWebhookRoute, { prefix: "/v1" });
+fastify.register(unsubscribeRoute, { prefix: "/v1" });
 fastify.register(dicebearRoute, { prefix: "/v1" });
 fastify.register(qrCodeRoute, { prefix: "/v1" });
 fastify.register(customerRoute, { prefix: "/v1" });
 fastify.register(adminTransferRoute, { prefix: "/v1" });
 fastify.register(queueRoute, { prefix: "/v1" });
 fastify.register(postMortemRoute, { prefix: "/v1" });
+fastify.register(campaignsRoute, { prefix: "/v1" });
+fastify.register(adminCampaignsRoute, { prefix: "/v1" });
+fastify.register(smsCampaignsRoute, { prefix: "/v1" });
+fastify.register(adminSmsRoute, { prefix: "/v1" });
 fastify.register(mcpRoutes, { prefix: "/v1/mcp" });
+// v1.0.1b (beta): OAuth authorization server for the MCP's new
+// authenticated booker-management tools, plus the routes those tools
+// actually call. Kept as separate plugins/prefixes from mcpRoutes above
+// so the original 4 anonymous tools' route file never has to know these
+// exist. See v1/mcp-oauth.js and v1/mcp-booker.js for details.
+fastify.register(mcpOAuthRoutes, { prefix: "/v1/mcp/oauth" });
+fastify.register(mcpOAuthMetadataRoutes); // no prefix — .well-known/* is root-relative by spec
+fastify.register(mcpBookerRoutes, { prefix: "/v1/mcp/booker" });
 // Serve frontend if dist exists
 const distPath = path.join(__dirname, "dist");
 

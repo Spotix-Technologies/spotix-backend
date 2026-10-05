@@ -7,7 +7,7 @@
 // assumption until real throughput data exists. Returned as a rounded
 // range, not false precision.
 
-import { redis } from "../../redis.js";
+import { redis } from "../../utils/redis-client.js";
 import { logKey, ADMISSION_LOG_WINDOW, COLD_START_ASSUMED_COMPLETION_SECS } from "./constants.js";
 
 export async function estimateWait(eventId, aheadCount, batchSize) {

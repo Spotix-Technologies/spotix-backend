@@ -18,7 +18,7 @@
  * already-resolved row is a no-op.
  */
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { supabaseAdmin } from "../supabase-admin.js";
 

@@ -27,6 +27,7 @@ export async function sendConfirmationEmail(
       ticket_references: reference,
       event_host: paymentData.bookerName || "Event Host",
       event_name: paymentData.eventName,
+      event_image: paymentData.eventImage || "",
       payment_ref: reference,
       ticket_types: ticketTypeSummary,
       booker_email: paymentData.bookerEmail || "support@spotix.com.ng",

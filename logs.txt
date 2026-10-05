@@ -1,9 +1,1 @@
-.LOG
-4:55 AM 4/11/2026
-[v9.1.0]
-
-Started documenting late. Yeah, bite me
-
-## Feature ##
-
-Added the weather forecast cron.
+I want the package like a regular npm package with package.json. Kinda like how numerox is. But it will contain the things that will be imported in each of the apps as needed 

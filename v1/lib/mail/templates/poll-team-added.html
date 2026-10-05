@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Spotix Poll Team Invite</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f0f5;font-family:'Segoe UI',Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 0 10px rgba(0,0,0,0.06);">
+
+  <tr>
+    <td align="center" style="background-color:#6b2fa5;padding:30px;">
+      <img
+        src="https://snguq.mjt.lu/img2/snguq/d1247179-8d20-40d9-9503-88ebd4b9587e/content"
+        alt="Spotix Teams"
+        width="80"
+        height="80"
+        style="display:block;border-radius:50%;background-color:#6b2fa5;padding:10px;"
+      />
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:20px 30px 10px;font-size:24px;color:#6b2fa5;font-weight:bold;">
+      You're on the poll team, {{var:recipient_name:"there"}}
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:10px 30px 20px;font-size:16px;color:#4a4a4a;line-height:1.5;">
+      <strong>{{var:adder_name:"A booker"}}</strong>
+      has added you as a team member on the poll
+      <strong>{{var:poll_name:"a poll"}}</strong>
+      on Spotix.
+    </td>
+  </tr>
+
+  <tr>
+    <td style="padding:10px 30px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f8ff;border:1px solid #d8c9f0;border-radius:6px;">
+        <tr>
+          <td style="padding:15px;font-size:14px;color:#333333;">
+
+            <strong>🗳️ Poll:</strong><br>
+            <p style="margin:4px 0 14px;font-size:18px;color:#333333;font-weight:bold;">
+              {{var:poll_name:"-"}}
+            </p>
+
+            <strong>🛡️ Your access:</strong><br>
+            <p style="margin:4px 0 0;font-size:20px;color:#6b2fa5;font-weight:bold;">
+              Team Member
+            </p>
+
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Access summary -->
+  <tr>
+    <td style="padding:0 30px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border:1px solid #eeeeee;border-radius:6px;">
+        <tr>
+          <td style="padding:14px 16px;font-size:13px;color:#555555;line-height:1.7;">
+            ✅ Edit poll details, contestants and categories<br>
+            ✅ View vote stats and entries<br>
+            ✅ Adjust poll settings<br>
+            🚫 Cannot initiate payouts — that stays with {{var:adder_name:"the poll creator"}}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- CTA Button -->
+  <tr>
+    <td align="center" style="padding:10px 30px 30px;">
+      <table cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center" style="border-radius:6px;background-color:#6b2fa5;">
+            <a href="{{var:poll_url:&quot;#&quot;}}" target="_blank" style="display:inline-block;padding:14px 32px;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:6px;">
+              Open Poll Editor
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:10px 30px 20px;font-size:14px;color:#8a8a8a;line-height:1.5;">
+      The poll creator can remove you from this team at any time from the poll's Settings page.
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="background-color:#f9f9f9;padding:15px;font-size:12px;color:#999999;">
+      © {{var:year:"2025"}} Spotix Ticketing. All rights reserved.
+    </td>
+  </tr>
+
+</table>
+
+</body>
+</html>

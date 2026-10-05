@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Spotix Role Update</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f0f5;font-family:'Segoe UI',Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 0 10px rgba(0,0,0,0.06);">
+
+  <tr>
+    <td align="center" style="background-color:#6b2fa5;padding:30px;">
+      <img
+        src="https://snguq.mjt.lu/img2/snguq/d1247179-8d20-40d9-9503-88ebd4b9587e/content"
+        alt="Spotix Teams"
+        width="80"
+        height="80"
+        style="display:block;border-radius:50%;background-color:#6b2fa5;padding:10px;"
+      />
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:20px 30px 10px;font-size:24px;color:#6b2fa5;font-weight:bold;">
+      Your role just changed, {{var:recipient_name:"there"}}
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:10px 30px 20px;font-size:16px;color:#4a4a4a;line-height:1.5;">
+      <strong>{{var:adder_name:"A booker"}}</strong>
+      has updated your role on
+      <strong>{{var:event_name:"an event"}}</strong>
+      on Spotix.
+    </td>
+  </tr>
+
+  <tr>
+    <td style="padding:10px 30px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f8ff;border:1px solid #d8c9f0;border-radius:6px;">
+        <tr>
+          <td style="padding:15px;font-size:14px;color:#333333;">
+
+            <strong>🎉 Event:</strong><br>
+            <p style="margin:4px 0 14px;font-size:18px;color:#333333;font-weight:bold;">
+              {{var:event_name:"-"}}
+            </p>
+
+            <strong>🛡️ Your role is now:</strong><br>
+            <p style="margin:4px 0 0;font-size:20px;color:#6b2fa5;font-weight:bold;">
+              {{var:role:"Team member"}}
+            </p>
+
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  {% if var:is_custom %}
+  <tr>
+    <td style="padding:0 30px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f8ff;border:1px solid #d8c9f0;border-radius:6px;">
+        <tr>
+          <td style="padding:15px;font-size:14px;color:#333333;">
+            <strong>📄 Pages you can access:</strong>
+            <ul style="margin:10px 0 0;padding-left:20px;color:#4a4a4a;line-height:1.7;">
+              {% for page in var:pages %}
+              <li>{{ page.label }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  <!-- CTA Button -->
+  <tr>
+    <td align="center" style="padding:10px 30px 30px;">
+      <table cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center" style="border-radius:6px;background-color:#6b2fa5;">
+            <a href="{{var:event_url:&quot;#&quot;}}" target="_blank" style="display:inline-block;padding:14px 32px;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:6px;">
+              View Event
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:10px 30px 20px;font-size:14px;color:#8a8a8a;line-height:1.5;">
+      You can visit the event now to see the details there, and you can exit the event team whenever you'd like from your Spotix account.
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="background-color:#f9f9f9;padding:15px;font-size:12px;color:#999999;">
+      © {{var:year:"2025"}} Spotix Ticketing. All rights reserved.
+    </td>
+  </tr>
+
+</table>
+
+</body>
+</html>

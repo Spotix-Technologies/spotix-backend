@@ -11,7 +11,7 @@
 // then drop the real numeric Template ID in here — same pattern as
 // EVENT_TRANSFER_REQUEST_TEMPLATE_ID in mail-routes/event-transfer-request.js.
 
-import { mailjet } from "../../mail-routes/_mailjet-client.js";
+import { mailjet } from "../mail/mailjet-client.js";
 
 const POST_MORTEM_READY_TEMPLATE_ID = 8313036;
 

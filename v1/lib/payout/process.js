@@ -15,7 +15,7 @@
 // That's the whole idempotency guarantee — no separate lock document,
 // no window where both callers believe they "own" the transfer.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { supabaseAdmin } from "../supabase-admin.js";
 import { checkPayoutRateLimit } from "./rate-limit.js";
 

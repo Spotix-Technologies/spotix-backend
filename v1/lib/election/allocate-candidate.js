@@ -13,6 +13,7 @@
 // supabaseAdmin, not adminDb.
 
 import { supabaseAdmin } from "../supabase-admin.js";
+import { claimOfficeSeat, releaseOfficeSeat } from "./seats.js";
 
 function genCandidateId() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -29,6 +30,25 @@ function genCandidateId() {
  */
 export async function allocateCandidate(fastify, refData, reference) {
   const candidateId = genCandidateId();
+
+  // Seats are only ever spent HERE, at the moment a paid candidate is
+  // actually credited — this webhook firing IS "on purchase" for the
+  // paid path (the pre-checks in spotix-vote's ref/route.ts and
+  // resume/route.ts are a courtesy that stops most people from even
+  // starting checkout for a full office, but this atomic claim is the
+  // real enforcement). If the RPC itself errors out (not "no seats left",
+  // an actual failure), never let that block crediting someone who
+  // already paid — same reasoning as the amount-mismatch check below;
+  // just log it loudly so it gets noticed.
+  const seatClaimed = await claimOfficeSeat(refData.officeId).catch((err) => {
+    fastify.log.error(`[election] Seat claim RPC failed for office ${refData.officeId} on ${reference}:`, err);
+    return true;
+  });
+  if (!seatClaimed) {
+    fastify.log.warn(
+      `[election] Office ${refData.officeId} had no seats left when crediting ${reference} — candidate already paid, crediting anyway.`
+    );
+  }
 
   const { data, error } = await supabaseAdmin
     .from("election_candidates")
@@ -56,6 +76,11 @@ export async function allocateCandidate(fastify, refData, reference) {
     // abandoned, paid again under a fresh reference some other way) — in
     // that case the office is already filled for them, so this is a
     // successful no-op rather than an error worth failing the webhook over.
+    // No NEW candidate got created on either error path below, so give
+    // back any seat we just claimed rather than leaving the office
+    // permanently one short.
+    if (seatClaimed) await releaseOfficeSeat(refData.officeId);
+
     if (error.code === "23505") {
       fastify.log.warn(`[election] Candidate already exists for office/email on ${reference} — treating as already credited`);
       const { data: existing } = await supabaseAdmin

@@ -22,7 +22,7 @@ export async function sendVoteConfirmationEmail(fastify, { refData, reference })
 
   try {
     const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:2000";
-    const APP_URL = process.env.APP_URL || "https://spotix.com.ng";
+    // const APP_URL = process.env.APP_URL || "https://spotix.com.ng";
 
     // Prefer the moment the payment actually completed (stamped by
     // markReferenceStatus just before crediting) over "now", so a
@@ -46,7 +46,7 @@ export async function sendVoteConfirmationEmail(fastify, { refData, reference })
       }).format(purchaseDateObj) + " WAT";
 
     const pollName = refData?.pollName ?? "this poll";
-    const pollUrl = `${APP_URL}/polls/${encodeURIComponent(pollName)}`;
+    const pollUrl = `${VOTE_APP_URL}/polls/${encodeURIComponent(pollName)}`;
 
     const emailPayload = {
       email: recipientEmail,

@@ -6,7 +6,7 @@
 // that the heavy lifting (full roster read, PDF render) shouldn't block a
 // Next.js API route or run on booker's request/response cycle.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 
 /** Normalizes a Firestore Timestamp, ISO string, epoch number, or
  *  null/undefined into a JS Date (or null if it can't be parsed). */

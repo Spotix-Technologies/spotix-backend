@@ -7,7 +7,7 @@
 // setInterval calls sweepAllActiveEvents), AND immediately on
 // /queue/complete so a freed slot doesn't sit idle until the next tick.
 
-import { redis } from "../../redis.js";
+import { redis } from "../../utils/redis-client.js";
 import { queueKey, activeKey, logKey, ACTIVE_EVENTS_KEY, ADMISSION_LOG_RETENTION } from "./constants.js";
 import { getQueueConfig } from "./config.js";
 

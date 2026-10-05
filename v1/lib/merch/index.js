@@ -41,7 +41,7 @@
 // this file just reads it straight off each line rather than re-deriving
 // any fee-burden math itself.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 
 import {
   loadReference,

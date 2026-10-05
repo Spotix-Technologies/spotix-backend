@@ -25,7 +25,7 @@
 // pricing/inventory decision is made there — that page is read-only
 // against the Reference doc this function writes.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { resolvePlatformFeeRates, resolveFeeBurden, calculateVATFee, computeOrderPricing } from "./pricing-math.js";
 import { getTicketSaleStatus, describeSaleStatus } from "./sale-window.js";
 import { buildTicketReference } from "./reference.js";

@@ -21,7 +21,7 @@
 // (v1/lib/payout/process.js), which only ever acts on a row that is
 // still in status "initializing".
 
-import { redis } from "../../redis.js";
+import { redis } from "../../utils/redis-client.js";
 
 const PER_USER_MAX = 3;
 const PER_USER_WINDOW_MS = 10_000; // 3 transfer inits per 10s per user

@@ -12,8 +12,8 @@
 // searches from one chat session, short enough that a newly-published
 // event or a sold-out tier shows up again within the minute.
 
-import { adminDb } from "../../firebase-admin.js";
-import { redis } from "../../redis.js";
+import { adminDb } from "../../utils/firebase.js";
+import { redis } from "../../utils/redis-client.js";
 
 const EVENTS_CACHE_KEY = "mcp:events:snapshot";
 const EVENTS_CACHE_TTL_SECONDS = 90;

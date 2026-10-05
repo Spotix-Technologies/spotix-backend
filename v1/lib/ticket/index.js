@@ -24,7 +24,7 @@
 // over an email, analytics, or referral hiccup. Step 12 goes further and
 // isn't even awaited — see the call site below.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { isValidTicketReference } from "../reference-format.js";
 
 import { verifyPaymentStatus } from "./verify-payment-status.js";

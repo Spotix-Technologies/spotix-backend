@@ -36,7 +36,7 @@
 //      Firestore transaction.
 
 import { FieldValue } from "firebase-admin/firestore";
-import { invalidateCategoryTreeCache } from "../../redis.js";
+import { invalidateCategoryTreeCache } from "../../utils/redis-client.js";
 
 /**
  * LEGACY PATH ONLY — recursively walks a whole-tree `categories` array

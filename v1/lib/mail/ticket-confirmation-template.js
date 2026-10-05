@@ -80,6 +80,9 @@ function renderTicketRow({ ticketId, ticketType }, index, total, qrBaseUrl) {
  * @param {string} params.bookerEmail
  * @param {{ ticketId: string, ticketType: string }[]} params.tickets - one entry per physical ticket, in order
  * @param {string} params.qrBaseUrl - e.g. "https://api.spotix.com.ng/v1/qrcode"
+ * @param {string} [params.eventImage] - the event's main cover image URL (events/{eventId}.eventImage,
+ *   frozen onto the Reference doc at checkout time — see create-pay-ref/route.ts). Optional: the hero
+ *   banner is skipped entirely when this is empty, rather than showing a broken image.
  * @returns {string} full HTML document, ready to hand to an ESP's `html` field
  */
 export function buildTicketConfirmationEmailHtml({
@@ -94,6 +97,7 @@ export function buildTicketConfirmationEmailHtml({
   bookerEmail,
   tickets,
   qrBaseUrl,
+  eventImage,
 }) {
   const safeName = escapeHtml(name);
   const safeEventName = escapeHtml(eventName);
@@ -101,7 +105,23 @@ export function buildTicketConfirmationEmailHtml({
   const safePaymentRef = escapeHtml(paymentRef);
   const safeTicketTypes = escapeHtml(ticketTypesSummary);
   const safePaymentMethod = escapeHtml(paymentMethod);
+  const safeEventImage = escapeHtml(eventImage || "");
   const isMultiple = Number(ticketCount) > 1;
+
+  // Cover photo banner — only rendered when the event actually has an
+  // image. Sits right under the greeting, above the Event box, as a full-
+  // width rounded card matching the rest of the body's visual language.
+  const eventImageHtml = safeEventImage
+    ? `
+                            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;margin-bottom:28px;">
+                                <tr>
+                                    <td style="border-radius:12px;border:1.5px solid ${BRAND.purpleBorder};overflow:hidden;line-height:0;">
+                                        <img src="${safeEventImage}" width="540" alt="${safeEventName}" class="event-cover-img"
+                                             style="display:block;width:100%;max-width:540px;height:auto;max-height:280px;object-fit:cover;border-radius:10px;" />
+                                    </td>
+                                </tr>
+                            </table>`
+    : "";
 
   const ticketRowsHtml = (tickets || [])
     .map((t, i) => renderTicketRow(t, i, tickets.length, qrBaseUrl))
@@ -134,6 +154,7 @@ export function buildTicketConfirmationEmailHtml({
             .hero-pad { padding: 28px 24px !important; }
             .table-cell { padding-top: 10px !important; padding-bottom: 10px !important; }
             .ticket-qr-cell { display: block !important; width: 100% !important; padding-bottom: 0 !important; }
+            .event-cover-img { max-height: 200px !important; }
         }
     </style>
     <!--[if mso]>
@@ -158,7 +179,9 @@ export function buildTicketConfirmationEmailHtml({
                 <table width="640" cellpadding="0" cellspacing="0" class="ms-header" style="border-collapse:collapse;max-width:640px;width:100%;">
                     <tr>
                         <td align="center" style="padding-bottom:24px;">
-                            <span style="font-size:22px;font-weight:700;color:${BRAND.purple};letter-spacing:-0.3px;">✦ Spotix</span>
+                            <img src="${escapeHtml(COMPANY.logoUrl)}" alt="Spotix" width="36" height="36"
+                                 style="display:inline-block;vertical-align:middle;width:36px;height:36px;border:0;margin-right:8px;" />
+                            <span style="display:inline-block;vertical-align:middle;font-size:22px;font-weight:700;color:${BRAND.purple};letter-spacing:-0.3px;">Spotix</span>
                         </td>
                     </tr>
                 </table>
@@ -173,7 +196,7 @@ export function buildTicketConfirmationEmailHtml({
                                 <tr>
                                     <td align="center" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.35);border-radius:16px;padding:28px 20px;">
                                         <img
-                                          src="https://snguq.mjt.lu/img2/snguq/d1247179-8d20-40d9-9503-88ebd4b9587e/content"
+                                          src="${escapeHtml(COMPANY.logoUrl)}"
                                           alt="Spotix"
                                           width="80"
                                           height="80"
@@ -197,7 +220,7 @@ export function buildTicketConfirmationEmailHtml({
                                 <strong style="color:${BRAND.purple};">${safeEventName}</strong>.
                                 Here's a summary of your order.
                             </p>
-
+${eventImageHtml}
                             <!-- EVENT HIGHLIGHT BOX -->
                             <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:28px;">
                                 <tr>

@@ -49,8 +49,8 @@
 //   that contestant's favour immediately (via a transaction, so two
 //   simultaneous "first" votes can't both win).
 
-import { adminDb } from "../../firebase-admin.js";
-import { invalidatePollCache } from "../../redis.js";
+import { adminDb } from "../../utils/firebase.js";
+import { invalidatePollCache } from "../../utils/redis-client.js";
 
 import {
   loadReference,

@@ -39,7 +39,7 @@
 // increments from double-counting on a redelivered webhook, same as it
 // does in voting/reference.js.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 
 import {
   loadReference,

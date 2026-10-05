@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Spotix Attendee Post Mortem</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f0f5;font-family:'Segoe UI',Arial,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 0 10px rgba(0,0,0,0.06);">
+
+  <tr>
+    <td align="center" style="background-color:#6b2fa5;padding:30px;">
+      <img
+        src="https://snguq.mjt.lu/img2/snguq/d1247179-8d20-40d9-9503-88ebd4b9587e/content"
+        alt="Spotix"
+        width="80"
+        height="80"
+        style="display:block;border-radius:50%;background-color:#6b2fa5;padding:10px;"
+      />
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:20px 30px 10px;font-size:24px;color:#6b2fa5;font-weight:bold;">
+      Your Post Mortem is ready, {{var:username:"there"}} 📊
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:10px 30px 20px;font-size:16px;color:#4a4a4a;line-height:1.5;">
+      We finished crunching the numbers for
+      <strong>{{var:event_name:"your event"}}</strong>.
+      The Attendee Post Mortem — first & last buyer, purchase timeline,
+      check-in patterns, and a few fun awards — is done and waiting for you.
+    </td>
+  </tr>
+
+  <tr>
+    <td style="padding:10px 30px 20px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f8ff;border:1px solid #d8c9f0;border-radius:6px;">
+        <tr>
+          <td style="padding:15px;font-size:14px;color:#333333;">
+
+            <strong>🎟️ Event:</strong><br>
+            <p style="margin:4px 0 0;font-size:18px;color:#333333;font-weight:bold;">
+              {{var:event_name:"-"}}
+            </p>
+
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- CTA Button -->
+  <tr>
+    <td align="center" style="padding:10px 30px 10px;">
+      <table cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center" style="border-radius:6px;background-color:#6b2fa5;">
+            <a href="{{var:download_url:&quot;#&quot;}}" target="_blank" style="display:inline-block;padding:14px 32px;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:6px;">
+              Download Report
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:10px 30px 20px;font-size:14px;color:#8a8a8a;line-height:1.5;">
+      The download link above is time-limited — if it's expired by the time you click it, just open the Attendees tab on Spotix Booker and download it from there instead. This report was only ever computed once, so it'll be exactly the same report either way.
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="background-color:#f9f9f9;padding:15px;font-size:12px;color:#999999;">
+      © {{var:year:"2026"}} Spotix Ticketing. All rights reserved.
+    </td>
+  </tr>
+
+</table>
+
+</body>
+</html>

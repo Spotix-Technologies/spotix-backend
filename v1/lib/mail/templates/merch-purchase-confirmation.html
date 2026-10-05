@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Confirmation</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f3fa;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3fa;padding:32px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(107,47,165,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#6b2fa5;padding:32px 40px;text-align:center;">
+              <div style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px;">SPOTIX</div>
+              <div style="color:#e9d8fd;font-size:13px;margin-top:4px;">Merch Order Confirmation</div>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px;">
+              <div style="width:56px;height:56px;background-color:#ecfdf5;border-radius:50%;display:inline-block;text-align:center;line-height:56px;margin-bottom:20px;">
+                <span style="color:#059669;font-size:28px;">&#10003;</span>
+              </div>
+
+              <h1 style="font-size:20px;color:#1f2937;margin:0 0 8px;">Hi {{var:recipient_name}}, your order is confirmed!</h1>
+              <p style="font-size:14px;color:#4b5563;line-height:1.6;margin:0 0 24px;">
+                Thanks for your purchase for <strong>{{var:event_name}}</strong>. Here's a summary of what you ordered.
+              </p>
+
+              <!-- Order items -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <thead>
+                  <tr>
+                    <th align="left" style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:8px;border-bottom:2px solid #6b2fa5;">Item</th>
+                    <th align="center" style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:8px;border-bottom:2px solid #6b2fa5;">Qty</th>
+                    <th align="right" style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:8px;border-bottom:2px solid #6b2fa5;">Price</th>
+                    <th align="right" style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:8px;border-bottom:2px solid #6b2fa5;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{var:items_html}}
+                </tbody>
+              </table>
+
+              <!-- Totals -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f5ff;border-radius:12px;padding:4px;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:13px;color:#6b7280;padding:4px 0;">Total units</td>
+                        <td align="right" style="font-size:13px;color:#1f2937;font-weight:600;padding:4px 0;">{{var:total_units}}</td>
+                      </tr>
+                      <tr>
+                        <td style="font-size:13px;color:#6b7280;padding:4px 0;">Amount paid</td>
+                        <td align="right" style="font-size:16px;color:#6b2fa5;font-weight:700;padding:4px 0;">{{var:total_amount}}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Delivery + reference -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+                <tr>
+                  <td style="font-size:13px;color:#6b7280;padding:6px 0;">Delivery address</td>
+                  <td align="right" style="font-size:13px;color:#1f2937;padding:6px 0;">{{var:buyer_address}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:13px;color:#6b7280;padding:6px 0;">Order date</td>
+                  <td align="right" style="font-size:13px;color:#1f2937;padding:6px 0;">{{var:purchase_date}}, {{var:purchase_time}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:13px;color:#6b7280;padding:6px 0;">Reference</td>
+                  <td align="right" style="font-size:13px;color:#1f2937;padding:6px 0;">{{var:reference}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:13px;color:#6b7280;padding:6px 0;">Order ID(s)</td>
+                  <td align="right" style="font-size:13px;color:#1f2937;padding:6px 0;">{{var:order_ids}}</td>
+                </tr>
+              </table>
+
+              <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
+                The event organizer will reach out with delivery or pickup details. Keep this email as your proof of purchase.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#faf9fc;padding:24px 40px;text-align:center;border-top:1px solid #eee;">
+              <p style="font-size:12px;color:#9ca3af;margin:0;">&copy; {{var:year}} Spotix Technologies. All rights reserved.</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

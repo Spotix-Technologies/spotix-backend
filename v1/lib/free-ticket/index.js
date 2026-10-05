@@ -39,7 +39,7 @@
 // so the buyer's free ticket is never lost over an email, analytics, or
 // referral hiccup.
 
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { isValidTicketReference } from "../reference-format.js";
 
 import { verifyFreeReference } from "./verify-free-reference.js";

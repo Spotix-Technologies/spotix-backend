@@ -5,8 +5,8 @@
 // sweep.js) doesn't hit Firestore every tick — exactly the read volume
 // this feature exists to protect against.
 
-import { adminDb } from "../../firebase-admin.js";
-import { redis } from "../../redis.js";
+import { adminDb } from "../../utils/firebase.js";
+import { redis } from "../../utils/redis-client.js";
 import { configCacheKey, CONFIG_CACHE_TTL, DEFAULT_BATCH_SIZE, DEFAULT_SESSION_TTL } from "./constants.js";
 
 export async function getQueueConfig(eventId) {

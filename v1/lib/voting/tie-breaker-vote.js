@@ -18,7 +18,7 @@
 //                             "first" votes can't both win).
 
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 import { tickTieBreakers } from "./tie-breaker.js";
 
 /**

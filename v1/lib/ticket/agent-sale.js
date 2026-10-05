@@ -25,7 +25,7 @@
 // recorded as the booker's revenue for the day.
 
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "../../firebase-admin.js";
+import { adminDb } from "../../utils/firebase.js";
 
 // Signature intentionally matches the pre-split export exactly —
 // ticket-agent.js imports { processAgentSale } from "./ticket.js" and
