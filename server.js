@@ -7,11 +7,7 @@ The backend is developed and maintained by Drexx Codes and the Spotix Team
 // before any of this file's own code runs — so if dotenv.config() were
 // called later (as a plain statement, like it used to be, several lines
 // below every route import), every route module imported above it would
-// already have run its own top-level code — including
-// v1/utils/redis-client.js's `new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, ... })`
-// — with process.env still empty. That's the exact "Redis client was
-// initialized without url or token" symptom: the .env values are fine,
-// they just weren't loaded yet when that module evaluated.
+// already have run its own top-level code.
 import "dotenv/config";
 
 import Fastify from "fastify";
@@ -21,9 +17,7 @@ import { fileURLToPath } from "url";
 import path, { dirname } from "path";
 import fs from "fs";
 
-// Global rate limiting — was previously only opt-in per-route (see
-// v1/middleware/rate-limit.js), never actually applied anywhere, so
-// nothing was really being limited backend-wide.
+// Global rate limiting
 import { checkRateLimit, getClientIp } from "./v1/middleware/rate-limit.js";
 
 // Routes
@@ -57,17 +51,17 @@ import campaignsRoute from "./v1/routes/campaigns.js";
 import adminCampaignsRoute from "./v1/routes/admin-campaigns.js";
 import smsCampaignsRoute from "./v1/routes/sms-campaigns.js";
 import adminSmsRoute from "./v1/routes/admin-sms.js";
-// v1/routes/cron/payout.js and v1/routes/gemini-enhance.js exist but were
-// never registered below in the original codebase either — not imported
-// here on purpose, see the notes in their controllers if you want them live.
-
 
 // __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Init Fastify
-const fastify = Fastify({ logger: true });
+// trustProxy: true is essential for Render/Cloudflare to see the real client IP
+const fastify = Fastify({ 
+  logger: true,
+  trustProxy: true 
+});
 
 /* -------------------- CORS CONFIG -------------------- */
 
@@ -85,46 +79,56 @@ const allowedOrigins = new Set([
   "https://bot.spotix.com.ng",
   "https://mcp.spotix.com.ng",
   "https://www.mcp.spotix.com.ng",
-
-  
 ]);
 
 await fastify.register(fastifyCors, {
   origin: (origin, cb) => {
-    // Allow internal calls, health checks, webhooks, curl
     if (!origin) return cb(null, true);
-
-    // Allow localhost for development
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
       return cb(null, true);
     }
-
-    // Allow known production domains
     if (allowedOrigins.has(origin)) {
       return cb(null, true);
     }
-
-    // Block everything else
     cb(new Error(`CORS blocked: ${origin}`), false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
-/* ---------------------------------------------------- */
+/* -------------------- BOT PROTECTION -------------------- */
+// Block obvious bot scanners instantly (returns 403 before rate limit/redis).
+
+const BLOCKED_PATHS = [
+  /\.env$/i,
+  /phpinfo\.php/i,
+  /\.php$/i,
+  /\.git/i,
+  /kafka/i,
+  /mongodb/i,
+  /postgres/i,
+  /rabbitmq/i,
+  /travis/i,
+  /buildkite/i,
+  /actions/i
+];
+
+fastify.addHook("onRequest", async (request, reply) => {
+  // Skip OPTIONS preflight
+  if (request.method === "OPTIONS") return;
+
+  // Check against blocked patterns
+  const isBlocked = BLOCKED_PATHS.some((pattern) => pattern.test(request.url));
+  if (isBlocked) {
+    return reply.code(403).send({ error: "Forbidden" });
+  }
+});
 
 /* -------------------- GLOBAL RATE LIMIT -------------------- */
-// Applies to every route on this backend, by client IP. Fixed-window
-// counter on the same shared Upstash Redis instance the per-route MCP
-// limiter already uses (v1/middleware/rate-limit.js) — fails OPEN on a
-// Redis hiccup, same as everywhere else that calls checkRateLimit, so a
-// Redis outage degrades to "no rate limiting" rather than "no API".
-//
-// Defaults are generous on purpose (this sits in front of everything,
-// including polling dashboards) — tune via env if a specific window/
-// limit is needed. Health checks and CORS preflight are excluded.
+// Lowered to 60 requests per minute (1 per second). 
+// Legitimate users won't hit this, bots will.
 const GLOBAL_RATE_LIMIT_WINDOW_SECONDS = Number(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60;
-const GLOBAL_RATE_LIMIT_MAX_REQUESTS = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 300;
+const GLOBAL_RATE_LIMIT_MAX_REQUESTS = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 60;
 
 fastify.addHook("onRequest", async (request, reply) => {
   if (request.method === "OPTIONS") return;
@@ -198,6 +202,7 @@ fastify.register(mcpRoutes, { prefix: "/v1/mcp" });
 fastify.register(mcpOAuthRoutes, { prefix: "/v1/mcp/oauth" });
 fastify.register(mcpOAuthMetadataRoutes); // no prefix — .well-known/* is root-relative by spec
 fastify.register(mcpBookerRoutes, { prefix: "/v1/mcp/booker" });
+
 // Serve frontend if dist exists
 const distPath = path.join(__dirname, "dist");
 

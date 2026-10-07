@@ -1,25 +1,19 @@
 // v1/middleware/rate-limit.js
 //
-// Shared Upstash Redis rate limiter. Originally written for routes
-// under v1/mcp/*, each setting its own window/limit without
-// re-implementing the Redis calls — now also the backbone of the
-// global, backend-wide limiter registered as an onRequest hook in
-// server.js, via the same checkRateLimit()/getClientIp() exports.
-//
-// Fails OPEN: a Redis hiccup never blocks a legit request — it's logged
-// by the caller and the request proceeds. Abuse protection is
-// best-effort defense-in-depth here, not the primary guard (the MCP
-// server itself also rate-limits per session before it ever reaches
-// this backend — see spotix-mcp's src/lib/rate-limit.ts).
+// Shared Upstash Redis rate limiter.
+// Note: server.js initializes Fastify with `trustProxy: true`. 
+// However, we still explicitly parse the X-Forwarded-For header here 
+// to ensure we get the real client IP behind Render's proxy, and not 
+// the proxy's internal IP (127.0.0.1).
 
 import { redis } from "../utils/redis-client.js";
 
 /**
- * @param {string} bucket - logical name for this limiter, e.g. "mcp:events"
- * @param {string} identifier - what's being limited, e.g. an IP or API key
- * @param {number} windowSeconds
- * @param {number} maxRequests
- * @returns {Promise<{ allowed: boolean, remaining: number }>}
+ * @param bucket - logical name for this limiter, e.g. "mcp:events"
+ * @param identifier - what's being limited, e.g. an IP or API key
+ * @param windowSeconds - number of seconds in the window
+ * @param maxRequests - max requests allowed in the window
+ * @returns A promise resolving to an object with allowed and remaining
  */
 export async function checkRateLimit(bucket, identifier, windowSeconds, maxRequests) {
   const key = `${bucket}:rl:${identifier}`;
@@ -30,16 +24,27 @@ export async function checkRateLimit(bucket, identifier, windowSeconds, maxReque
     }
     return { allowed: count <= maxRequests, remaining: Math.max(0, maxRequests - count) };
   } catch (err) {
+    // Fail open: if Redis is down, allow the request so the API doesn't go down.
     return { allowed: true, remaining: maxRequests, degraded: true };
   }
 }
 
-/** Same client-IP resolution used elsewhere in this backend (verify-payment.js). */
+/** 
+ * Returns the real client IP, correctly accounting for Render's proxy.
+ * It prioritizes the X-Forwarded-For header (which Render/Cloudflare set)
+ * and falls back to request.ip (for local development).
+ */
 export function getClientIp(request) {
   const forwarded = request.headers["x-forwarded-for"];
+  
+  // If we are behind a proxy (Render, Cloudflare), use the real client IP
   if (typeof forwarded === "string" && forwarded.length > 0) {
+    // X-Forwarded-For can be a comma-separated list (client, proxy1, proxy2)
+    // The first one is the original client IP.
     return forwarded.split(",")[0].trim();
   }
+  
+  // Fallback for local development (where there is no proxy)
   return request.ip;
 }
 
