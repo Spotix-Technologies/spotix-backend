@@ -1,17 +1,9 @@
 import { MailerSend } from "mailersend"
 import dotenv from "dotenv"
-import { buildTicketConfirmationEmailHtml } from "../lib/mail/ticket-confirmation-template.js"
-import { sendViaSES } from "../lib/mail/ses-client.js"
+import { sendTicketEmail } from "../lib/ticket/send-ticket-email.js"
 
 // Load environment variables
 dotenv.config()
-
-// Base URL the QR <img> tags in the ticket confirmation email point at —
-// v1/qrcode.js is registered under this same backend, so it defaults to
-// BACKEND_URL. Set QR_BASE_URL explicitly if QR images should be served
-// from a different host (e.g. a CDN in front of this API).
-const QR_BASE_URL =
-  process.env.QR_BACKEND_URL || "http://localhost:2000"
 
 // Initialize MailerSend with API key
 const mailersend = new MailerSend({
@@ -87,6 +79,11 @@ export default async function sendMailRoutes(fastify, options) {
   // QR code per ticket, plus the event's cover image, which a hosted
   // template can't loop/conditionally render. See
   // v1/lib/mail/ticket-confirmation-template.js for the full rationale.
+  //
+  // The email also carries ticket.pdf and invite.ics (calendar) attachments
+  // — see v1/lib/ticket/send-ticket-email.js. The event_venue / event_date /
+  // event_end_date / event_start / event_end / event_id fields below are all
+  // optional: without a usable event_date the invite is simply left out.
   fastify.post("/payment-confirmation", async (request, reply) => {
   try {
     const {
@@ -98,6 +95,12 @@ export default async function sendMailRoutes(fastify, options) {
       event_host,
       event_name,
       event_image,       // event's cover image URL, frozen on the Reference doc at checkout — optional
+      event_id,          // optional — used for the calendar invite's UID / event link
+      event_venue,       // optional
+      event_date,        // optional — "YYYY-MM-DD"
+      event_end_date,    // optional
+      event_start,       // optional — "HH:mm"
+      event_end,         // optional
       payment_ref,
       ticket_types,      
       booker_email,
@@ -150,10 +153,19 @@ if (missingFields.length > 0) {
           .filter(Boolean)
           .map((ticketId) => ({ ticketId, ticketType: ticket_types || "Standard" }));
 
-    const emailHtml = buildTicketConfirmationEmailHtml({
+    const { attachments } = await sendTicketEmail({
+      log: fastify.log,
+      to: email,
       name,
+      eventId: event_id,
       eventName: event_name,
       eventHost: event_host || "Spotix Event Host",
+      eventImage: event_image || "",
+      eventVenue: event_venue,
+      eventDate: event_date,
+      eventEndDate: event_end_date,
+      eventStart: event_start,
+      eventEnd: event_end,
       paymentRef: ticket_references || payment_ref,
       ticketTypesSummary: ticket_types || "Standard",
       totalAmount: total_amount || "0.00",
@@ -161,19 +173,9 @@ if (missingFields.length > 0) {
       paymentMethod: payment_method,
       bookerEmail: booker_email || "support@spotix.com.ng",
       tickets: normalizedTickets,
-      qrBaseUrl: QR_BASE_URL,
-      eventImage: event_image || "",
     })
 
-    await sendViaSES({
-      from: "Spotix Tickets <tickets@hello.spotix.com.ng>",
-      to: email,
-      subject: `Your Ticket for ${event_name}`,
-      html: emailHtml,
-      configurationSetName: "tracking", // Enables open/click tracking via the custom tracking domain
-    })
-
-    fastify.log.info("Payment confirmation email sent successfully")
+    fastify.log.info(`Payment confirmation email sent successfully (attachments: ${attachments.join(", ") || "none"})`)
     return reply.code(200).send({
       success: true,
       message: "Payment confirmation email sent successfully",

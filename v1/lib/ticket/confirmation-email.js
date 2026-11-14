@@ -28,6 +28,13 @@ export async function sendConfirmationEmail(
       event_host: paymentData.bookerName || "Event Host",
       event_name: paymentData.eventName,
       event_image: paymentData.eventImage || "",
+      // Feed the calendar invite (invite.ics) + the date/venue lines in the email
+      event_id: paymentData.eventId || "",
+      event_venue: paymentData.eventVenue || "",
+      event_date: paymentData.eventDate || "",
+      event_end_date: paymentData.eventEndDate || "",
+      event_start: paymentData.eventStart || "",
+      event_end: paymentData.eventEnd || "",
       payment_ref: reference,
       ticket_types: ticketTypeSummary,
       booker_email: paymentData.bookerEmail || "support@spotix.com.ng",

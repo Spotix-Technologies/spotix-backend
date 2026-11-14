@@ -24,7 +24,8 @@
 // (v1/routes/mail.js) on hosted templates.
 
 import dotenv from "dotenv"
-import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses"
+import { SESClient, SendEmailCommand, SendRawEmailCommand } from "@aws-sdk/client-ses"
+import { buildRawEmail } from "./mime.js"
 
 dotenv.config()
 
@@ -56,18 +57,28 @@ function getClient() {
  * @param {string} params.subject
  * @param {string} params.html
  * @param {string} [params.configurationSetName] - optional SES configuration set (e.g. "tracking")
+ * @param {string} [params.text] - optional plain-text alternative (only used with attachments)
+ * @param {{ filename: string, contentType: string, content: Buffer|string }[]} [params.attachments]
+ *   When present, the email is sent with SendRawEmail (SendEmail can't carry attachments).
  */
-export async function sendViaSES({ from, to, subject, html, configurationSetName }) {
-  const command = new SendEmailCommand({
-    Source: from,
-    Destination: { ToAddresses: [to] },
-    Message: {
-      Subject: { Data: subject, Charset: "UTF-8" },
-      Body: { Html: { Data: html, Charset: "UTF-8" } },
-    },
-    // Optional. When omitted, SES delivers the email with no event publishing.
-    ...(configurationSetName ? { ConfigurationSetName: configurationSetName } : {}),
-  })
+export async function sendViaSES({ from, to, subject, html, configurationSetName, text, attachments }) {
+  const command = attachments?.length
+    ? new SendRawEmailCommand({
+        Source: from,
+        Destinations: [to],
+        RawMessage: { Data: buildRawEmail({ from, to, subject, html, text, attachments }) },
+        ...(configurationSetName ? { ConfigurationSetName: configurationSetName } : {}),
+      })
+    : new SendEmailCommand({
+        Source: from,
+        Destination: { ToAddresses: [to] },
+        Message: {
+          Subject: { Data: subject, Charset: "UTF-8" },
+          Body: { Html: { Data: html, Charset: "UTF-8" } },
+        },
+        // Optional. When omitted, SES delivers the email with no event publishing.
+        ...(configurationSetName ? { ConfigurationSetName: configurationSetName } : {}),
+      })
 
   try {
     const result = await getClient().send(command)

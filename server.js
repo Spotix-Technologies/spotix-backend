@@ -28,6 +28,7 @@ import notifyRoutes from "./v1/routes/notify.js";
 import webhookRoute from "./v1/routes/webhook.js";
 import verifyPaymentRoute from "./v1/routes/verify-payment.js";
 import ticketRoute from "./v1/routes/ticket.js";
+import ticketResendRoute from "./v1/routes/ticket-resend.js";
 import generateAgentTickets from "./v1/routes/ticket-agent.js";
 import freeTicketRoute from "./v1/routes/ticket2.js";
 import payoutProcessRoute from "./v1/routes/payout-process.js";
@@ -51,6 +52,7 @@ import campaignsRoute from "./v1/routes/campaigns.js";
 import adminCampaignsRoute from "./v1/routes/admin-campaigns.js";
 import smsCampaignsRoute from "./v1/routes/sms-campaigns.js";
 import adminSmsRoute from "./v1/routes/admin-sms.js";
+import affiliateRoute from "./v1/routes/affiliate.js";
 
 // __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -79,6 +81,8 @@ const allowedOrigins = new Set([
   "https://bot.spotix.com.ng",
   "https://mcp.spotix.com.ng",
   "https://www.mcp.spotix.com.ng",
+  "https://affiliates.spotix.com.ng",
+  "https://www.affiliates.spotix.com.ng",
 ]);
 
 await fastify.register(fastifyCors, {
@@ -173,6 +177,7 @@ fastify.register(sendMailRoutes, { prefix: "/v1/mail" });
 fastify.register(notifyRoutes, { prefix: "/v1/notify" });
 fastify.register(webhookRoute, { prefix: "/v1" });
 fastify.register(ticketRoute, { prefix: "/v1" });
+fastify.register(ticketResendRoute, { prefix: "/v1" });
 fastify.register(generateAgentTickets, { prefix: "/v1" });
 fastify.register(verifyPaymentRoute, { prefix: "/v1" });
 fastify.register(freeTicketRoute, { prefix: "/v1" });
@@ -193,6 +198,7 @@ fastify.register(campaignsRoute, { prefix: "/v1" });
 fastify.register(adminCampaignsRoute, { prefix: "/v1" });
 fastify.register(smsCampaignsRoute, { prefix: "/v1" });
 fastify.register(adminSmsRoute, { prefix: "/v1" });
+fastify.register(affiliateRoute, { prefix: "/v1" });
 fastify.register(mcpRoutes, { prefix: "/v1/mcp" });
 // v1.0.1b (beta): OAuth authorization server for the MCP's new
 // authenticated booker-management tools, plus the routes those tools

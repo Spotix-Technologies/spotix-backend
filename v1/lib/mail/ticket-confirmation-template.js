@@ -83,6 +83,11 @@ function renderTicketRow({ ticketId, ticketType }, index, total, qrBaseUrl) {
  * @param {string} [params.eventImage] - the event's main cover image URL (events/{eventId}.eventImage,
  *   frozen onto the Reference doc at checkout time — see create-pay-ref/route.ts). Optional: the hero
  *   banner is skipped entirely when this is empty, rather than showing a broken image.
+ * @param {string} [params.eventWhen] - pre-formatted date/time line shown in the Event box (omitted when empty)
+ * @param {string} [params.eventVenue] - venue shown in the Event box (omitted when empty)
+ * @param {boolean} [params.hasAttachments] - adds a "ticket PDF + calendar invite attached" note
+ * @param {number} [params.maxInlineTickets] - cap on QR rows rendered in the body (the rest live in the attached PDF,
+ *   which keeps big orders under Gmail's ~102KB clipping limit). Default: no cap.
  * @returns {string} full HTML document, ready to hand to an ESP's `html` field
  */
 export function buildTicketConfirmationEmailHtml({
@@ -98,6 +103,10 @@ export function buildTicketConfirmationEmailHtml({
   tickets,
   qrBaseUrl,
   eventImage,
+  eventWhen,
+  eventVenue,
+  hasAttachments = false,
+  maxInlineTickets = Infinity,
 }) {
   const safeName = escapeHtml(name);
   const safeEventName = escapeHtml(eventName);
@@ -123,9 +132,25 @@ export function buildTicketConfirmationEmailHtml({
                             </table>`
     : "";
 
-  const ticketRowsHtml = (tickets || [])
-    .map((t, i) => renderTicketRow(t, i, tickets.length, qrBaseUrl))
+  const allTickets = tickets || [];
+  const inlineTickets = allTickets.slice(0, maxInlineTickets);
+  const hiddenTicketCount = allTickets.length - inlineTickets.length;
+  const ticketRowsHtml = inlineTickets
+    .map((t, i) => renderTicketRow(t, i, allTickets.length, qrBaseUrl))
     .join("");
+  const moreTicketsHtml = hiddenTicketCount > 0
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${BRAND.muted};line-height:22px;">+ ${hiddenTicketCount} more ticket${hiddenTicketCount > 1 ? "s" : ""} — all of them are in the attached PDF.</p>`
+    : "";
+  const attachmentsNoteHtml = hasAttachments
+    ? `<p style="margin:16px 0 0;font-size:14px;color:${BRAND.muted};line-height:22px;">📎 Your ticket${allTickets.length > 1 ? "s" : ""} (<strong>ticket.pdf</strong>) and a calendar invite (<strong>invite.ics</strong>) are attached to this email.</p>`
+    : "";
+
+  const safeEventWhen = escapeHtml(eventWhen || "");
+  const safeEventVenue = escapeHtml(eventVenue || "");
+  const eventDetailRows = [
+    safeEventWhen && `<tr><td style="font-size:14px;color:${BRAND.muted};padding-bottom:6px;">📅 <strong style="color:${BRAND.ink};">${safeEventWhen}</strong></td></tr>`,
+    safeEventVenue && `<tr><td style="font-size:14px;color:${BRAND.muted};padding-bottom:6px;">📍 <strong style="color:${BRAND.ink};">${safeEventVenue}</strong></td></tr>`,
+  ].filter(Boolean).join("");
 
   const mailtoBody = encodeURIComponent(
     `Hi ${eventHost},\n\nI purchased a ${ticketTypesSummary} ticket to your event (Ref: ${paymentRef}). I have a question.`
@@ -215,8 +240,7 @@ export function buildTicketConfirmationEmailHtml({
                         <td class="ms-content-body" style="padding:40px 50px;font-family:'Inter', Helvetica, Arial, sans-serif;font-size:16px;line-height:26px;color:${BRAND.bodyText};">
 
                             <p style="margin:0 0 28px;font-size:16px;line-height:26px;color:${BRAND.bodyText};">
-                                Hi <strong style="color:${BRAND.ink};">${safeName}</strong>, your ticket
-                                ${isMultiple ? "s are" : " is"} confirmed for
+                                Hi <strong style="color:${BRAND.ink};">${safeName}</strong>, your ticket${isMultiple ? "s are" : " is"} confirmed for
                                 <strong style="color:${BRAND.purple};">${safeEventName}</strong>.
                                 Here's a summary of your order.
                             </p>
@@ -232,6 +256,7 @@ ${eventImageHtml}
                                             <tr>
                                                 <td style="font-size:18px;font-weight:700;color:${BRAND.ink};padding-bottom:12px;line-height:26px;">${safeEventName}</td>
                                             </tr>
+                                            ${eventDetailRows}
                                             <tr>
                                                 <td style="font-size:14px;color:${BRAND.muted};">
                                                     Organised by <strong style="color:${BRAND.purple};">${safeEventHost}</strong>
@@ -252,6 +277,8 @@ ${eventImageHtml}
                             </table>
                             <div style="margin-bottom:28px;">
                                 ${ticketRowsHtml}
+                                ${moreTicketsHtml}
+                                ${attachmentsNoteHtml}
                             </div>
 
                             <!-- ORDER DETAILS TABLE -->

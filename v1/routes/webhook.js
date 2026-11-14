@@ -16,6 +16,7 @@ import crypto from "crypto";
 import { adminDb } from "../utils/firebase.js";
 import { processTransferEvents } from "../lib/payout/webhook-events.js";
 import { processAdminTransferEvents, isAdminTransferReference } from "../lib/admin-transfer/events.js";
+import { processAffiliateTransferEvents, isAffiliateWithdrawalReference } from "../lib/affiliate/withdraw.js";
 import { generateTickets } from "./ticket.js";
 import { generateAgentTickets } from "./ticket-agent.js";
 import { processVotingCharge } from "../lib/voting/index.js";
@@ -254,7 +255,9 @@ export default async function webhookRoute(fastify, options) {
           // (booker/poll payouts, "SPTX-TRNS-...") use disjoint reference
           // prefixes — dispatch to whichever table actually owns this
           // reference instead of querying both on every delivery.
-          if (isAdminTransferReference(data?.reference)) {
+          if (isAffiliateWithdrawalReference(data?.reference)) {
+            await processAffiliateTransferEvents(fastify, [{ event, data }]);
+          } else if (isAdminTransferReference(data?.reference)) {
             await processAdminTransferEvents(fastify, [{ event, data }]);
           } else {
             await processTransferEvents(fastify, [{ event, data }]);
