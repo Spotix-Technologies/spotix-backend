@@ -117,16 +117,20 @@ export async function submitCampaign(campaign, organizerId) {
 
 /** Background cycle — see file header. Safe to run concurrently-ish: a
  *  campaign's status is re-checked right before it's acted on. */
-export async function runPendingReviews(log = console) {
+export async function runPendingReviews(log = console, { campaignId } = {}) {
   const summary = { reviewed: 0, passed: 0, flagged: 0, retried: 0 };
   if (!isValidationAllowed()) return summary;
 
-  const { data: pending, error } = await supabaseAdmin
+  // With campaignId, only that campaign is reviewed (on-demand run right
+  // after the booker submits it); without it, the scheduled batch.
+  let query = supabaseAdmin
     .from("campaigns")
     .select("*")
     .eq("status", "pending_review")
     .order("started_at", { ascending: true })
     .limit(REVIEW_BATCH);
+  if (campaignId) query = query.eq("id", campaignId);
+  const { data: pending, error } = await query;
   if (error) throw error;
 
   for (const row of pending || []) {

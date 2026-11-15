@@ -103,26 +103,31 @@ await fastify.register(fastifyCors, {
 /* -------------------- BOT PROTECTION -------------------- */
 // Block obvious bot scanners instantly (returns 403 before rate limit/redis).
 
+// Patterns are matched against the URL *path only* (never the query string)
+// and anchored to whole path segments / file names. Unanchored substrings
+// like /actions/i used to block legitimate routes — e.g. "campaign-trans-
+// actions" contains "actions" and was 403'd.
 const BLOCKED_PATHS = [
   /\.env$/i,
   /phpinfo\.php/i,
   /\.php$/i,
-  /\.git/i,
-  /kafka/i,
-  /mongodb/i,
-  /postgres/i,
-  /rabbitmq/i,
-  /travis/i,
-  /buildkite/i,
-  /actions/i
+  /(^|\/)\.git(\/|$)/i,
+  /(^|\/)kafka(\/|$)/i,
+  /(^|\/)mongodb(\/|$)/i,
+  /(^|\/)postgres(\/|$)/i,
+  /(^|\/)rabbitmq(\/|$)/i,
+  /(^|\/)\.?travis(\.yml)?$/i,
+  /(^|\/)\.?buildkite(\/|$)/i,
+  /(^|\/)\.github\/(workflows|actions)(\/|$)/i
 ];
 
 fastify.addHook("onRequest", async (request, reply) => {
   // Skip OPTIONS preflight
   if (request.method === "OPTIONS") return;
 
-  // Check against blocked patterns
-  const isBlocked = BLOCKED_PATHS.some((pattern) => pattern.test(request.url));
+  // Check against blocked patterns (path only, query string stripped)
+  const path = request.url.split("?")[0];
+  const isBlocked = BLOCKED_PATHS.some((pattern) => pattern.test(path));
   if (isBlocked) {
     return reply.code(403).send({ error: "Forbidden" });
   }

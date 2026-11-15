@@ -20,7 +20,7 @@ import { supabaseAdmin } from "../supabase-admin.js";
 import { resolveDeliveryProvider } from "./config.js";
 import { refundRecipientCredit } from "./credits.js";
 import {
-  getCampaign, updateCampaign, getSendableRecipients, updateRecipient,
+  getCampaign, updateCampaign, getSendableRecipients, updateRecipient, updateRecipientIfStatusIn,
   recomputeCampaignAggregates, getUnsubscribedEmails, normalizeEmail,
 } from "./repo.js";
 import { sendViaResend } from "./delivery/resend-provider.js";
@@ -30,6 +30,19 @@ import { runPendingReviews } from "./review.js";
 const BATCH_SIZE = 25; // conservative per-cycle batch — spec §32, never load 50k into memory
 const MAX_ATTEMPTS = 5;
 const RETRY_BACKOFF_MINUTES = [1, 5, 15, 60, 240]; // index = attempt_count - 1
+
+// On-demand (booker-triggered) runs keep draining a campaign batch after
+// batch instead of waiting for the next scheduled cycle. Capped so one huge
+// campaign can't hold the process forever — whatever is left is picked up by
+// the scheduled cycle exactly as before.
+const DRAIN_MAX_MS = 4 * 60_000;
+const DRAIN_MAX_BATCHES = 400;
+
+// Campaigns currently being processed by THIS process. The scheduled cycle and
+// any number of on-demand runs can overlap; this makes them skip a campaign
+// that's already in flight. (Across multiple instances, the atomic
+// per-recipient claim in processCampaign() is what prevents double sends.)
+const inFlight = new Set();
 
 function nextRetryDelayMinutes(attemptCount) {
   return RETRY_BACKOFF_MINUTES[Math.min(attemptCount - 1, RETRY_BACKOFF_MINUTES.length - 1)];
@@ -62,7 +75,15 @@ async function processCampaign(campaign, provider) {
       continue;
     }
 
-    await updateRecipient(recipient.id, { status: "sending", last_attempt_at: new Date().toISOString() });
+    // Atomic claim: only one worker can move this recipient to "sending".
+    // If another run (cron overlapping an on-demand run, or a second
+    // instance) got there first, skip — never send the same email twice.
+    const claimed = await updateRecipientIfStatusIn(
+      recipient.id,
+      { status: "sending", last_attempt_at: new Date().toISOString() },
+      ["pending", "failed"],
+    );
+    if (!claimed.length) continue;
 
     try {
       const { providerMessageId } = await sendOne(provider, campaign, recipient);
@@ -123,10 +144,56 @@ export async function runCampaignProcessingCycle() {
   if (error) throw error;
 
   for (const campaign of campaigns || []) {
-    const outcome = await processCampaign(campaign, provider);
-    results.campaignsTouched += 1;
-    results.recipientsProcessed += outcome.processed;
+    if (inFlight.has(campaign.id)) continue; // an on-demand run is already on it
+    inFlight.add(campaign.id);
+    try {
+      const outcome = await processCampaign(campaign, provider);
+      results.campaignsTouched += 1;
+      results.recipientsProcessed += outcome.processed;
+    } finally {
+      inFlight.delete(campaign.id);
+    }
   }
 
   return results;
+}
+
+/**
+ * Process ONE campaign right now (instead of waiting for the next scheduled
+ * cycle): run its moderation review if it's pending one, then send batches
+ * until nothing sendable is left or the drain cap is hit. Safe to call
+ * repeatedly — a second call for a campaign already in flight is a no-op.
+ * The scheduled cycle remains the safety net for retries and leftovers.
+ */
+export async function processCampaignNow(campaignId, log = console) {
+  if (inFlight.has(campaignId)) return { skipped: "already_running" };
+  inFlight.add(campaignId);
+  try {
+    // 1. Moderation review (no-op unless the campaign is pending_review).
+    await runPendingReviews(log, { campaignId });
+
+    const provider = resolveDeliveryProvider();
+    if (!provider) return { skipped: "no_provider" };
+
+    let campaign = await getCampaign(campaignId);
+    if (!campaign || !["waiting_for_provider", "queued", "processing"].includes(campaign.status)) {
+      return { skipped: `status_${campaign?.status ?? "missing"}` };
+    }
+
+    // 2. Drain.
+    const startedAt = Date.now();
+    let batches = 0;
+    let recipientsProcessed = 0;
+    while (batches < DRAIN_MAX_BATCHES && Date.now() - startedAt < DRAIN_MAX_MS) {
+      const outcome = await processCampaign(campaign, provider);
+      batches += 1;
+      recipientsProcessed += outcome.processed;
+      if (!outcome.processed) break;
+      campaign = await getCampaign(campaignId);
+      if (!campaign || !["waiting_for_provider", "queued", "processing"].includes(campaign.status)) break;
+    }
+    return { provider, batches, recipientsProcessed };
+  } finally {
+    inFlight.delete(campaignId);
+  }
 }
