@@ -53,6 +53,7 @@ import adminCampaignsRoute from "./v1/routes/admin-campaigns.js";
 import smsCampaignsRoute from "./v1/routes/sms-campaigns.js";
 import adminSmsRoute from "./v1/routes/admin-sms.js";
 import affiliateRoute from "./v1/routes/affiliate.js";
+import editHistoryRoute from "./v1/routes/edit-history.js";
 
 // __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -204,6 +205,7 @@ fastify.register(adminCampaignsRoute, { prefix: "/v1" });
 fastify.register(smsCampaignsRoute, { prefix: "/v1" });
 fastify.register(adminSmsRoute, { prefix: "/v1" });
 fastify.register(affiliateRoute, { prefix: "/v1" });
+fastify.register(editHistoryRoute, { prefix: "/v1" });
 fastify.register(mcpRoutes, { prefix: "/v1/mcp" });
 // v1.0.1b (beta): OAuth authorization server for the MCP's new
 // authenticated booker-management tools, plus the routes those tools
